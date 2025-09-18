@@ -35,7 +35,6 @@ def calculate_percentage_change(price_now:float,price_yesterday:float) -> float:
     return ((price_now-price_yesterday)/price_yesterday)*100
 
 tools=[get_stock_price, calculate_percentage_change]
-
 llm=ChatOpenAI(model="gpt-4o",temperature=0.7)
 
 prompt = ChatPromptTemplate.from_messages(
