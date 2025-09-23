@@ -6,23 +6,24 @@ import os
 from openai import OpenAI
 import numpy as np
 import faiss
-from sentence_transformers import SentenceTransformer
-from langchain.embeddings import OpenAIEmbeddings
+#from langchain.embeddings import OpenAIEmbeddings
+from langchain_community.embeddings import OpenAIEmbeddings
+from typing import List, Dict
 
-os.environ["OPENAI_API_KEY"]="your-api-key"
-os.environ["OPENAI_BASE_URL"]="your-base_url"
+api_key = os.environ.get("OPENAI_API_KEY")
+base_url = os.environ.get("OPENAI_BASE_URL")
 #能否直接这样编码在前面？全局使用？
 
 class FAISSMemory:
     def __init__(self,dimension=1536):
         self.embedder=OpenAIEmbeddings()
-        self.index=faiss.Indexflat2(dimention)
+        self.index=faiss.IndexFlatL2(dimension)
         self.memories=[]
 
 
     def add_memory(self,query:str,response:str):
         text=f"{query}{response}"
-        embedding=embedder.embeded_query(text)
+        embedding=self.embedder.embed_query(text)
 
         self.index.add(np.array([embedding],dtype=np.float32))
         self.memories.append({
@@ -32,7 +33,10 @@ class FAISSMemory:
         })
 
     def search_memory(self,query:str,k:int=3)->List[Dict]:
-        embedding_query=embedder.embed_query(query)
+        if len(self.memories) == 0:
+            return []
+
+        embedding_query=self.embedder.embed_query(query)
         distances,indices=self.index.search(np.array([embedding_query],dtype=np.float32),k)
 
         result=[]
@@ -40,14 +44,14 @@ class FAISSMemory:
             if 0<=idx<len(self.memories):
                 memory=self.memories[idx].copy()
                 memory["similarity"]=1 / (1 + distances[0][i])
-                results.append(memory)
-        return results
+                result.append(memory)
+        return result
 
 
-class FinacialAgent:
+class FinancialAgent:
 
     def __init__(self):
-        self.llm=OpenAI(temperature=0.3)
+        self.llm=OpenAI()
         self.memory=FAISSMemory()
         self.conversation_history=[]
     
@@ -55,20 +59,33 @@ class FinacialAgent:
         #搜索相关记忆
         relevant_memory=self.memory.search_memory(query)
 
-        prompt=build_prompt()
+        prompt=self.build_prompt(query,relevant_memory)
 
-        response=self.llm.predict(prompt)
+        try:
+            # 在API调用时指定temperature
+            response = self.llm.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3  # 在这里设置temperature
+            ).choices[0].message.content
+            
+            self.memory.add_memory(query,response)
+            self.conversation_history.append((query,response))
+            
+            return response
+        except Exception as e:
+            return f"发生错误: {str(e)}"
 
-        self.memory.add_memory(query,response)
-        self.conversation_history.append((query,response))
-
-
-    def build_prompt(self,query:str,memories:list[Dict])->str:
-        
-        history = "\n".join([f"用户: {q}\n助手: {r}" for q, r in self.conversation_history[-3:]])
+    #def build_prompt(self, query: str, memories: List[Dict]) -> str:
+    def build_prompt(self, query: str, memories: List[Dict]) -> str:    
+        history = "\n".join([
+            f"用户: {q}\n助手: {r}"
+            for q, r in self.conversation_history[-3:]
+        ]) if self.conversation_history else "无最近对话"
         
         memory_text="\n".join([
-            f"记忆:{m['query']} -> 记忆:{m['response']}" for m in memories
+            f"记忆:{m['query']} -> {m['response']}"
+            for m in memories
         ]) if memories else  "无相关记忆"
 
         return f"""你是金融助手，基于以下信息回答问题：
@@ -84,7 +101,7 @@ class FinacialAgent:
 请提供专业回答："""
 
 
-    def handle_reference():
+    def handle_reference(self,query:str)->str:
         """处理模糊引用"""
         # 查找最近的股票对话
         stock_keywords = ["股票", "股价", "stock", "ticker"]
