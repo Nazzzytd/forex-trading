@@ -5,31 +5,23 @@ import time
 import os
 from typing import Dict, List, Optional, Union
 import json
-from dotenv import load_dotenv  # 新增：用于加载.env文件
-
-# 加载.env文件中的环境变量
-load_dotenv()
+from config import config
 
 class ForexDataTool:
-    """
-    外汇数据获取工具类 - 使用 Alpha Vantage API
-    """
-    
     def __init__(self, api_key: str = None):
         """
         初始化外汇数据工具
         
         Args:
-            api_key: Alpha Vantage API密钥，如果为None则从环境变量读取
+            api_key: Alpha Vantage API密钥，如果为None则使用config中的配置
         """
-        # 优先使用传入的api_key，如果没有则从环境变量读取
-        self.api_key = os.getenv('ALPHA_VANTAGE_API_KEY')
+        self.api_key = api_key or config.alpha_api_key
         if not self.api_key:
-            raise ValueError("请提供Alpha Vantage API密钥或设置ALPHA_VANTAGE_API_KEY环境变量")
+            raise ValueError("未找到Alpha Vantage API密钥")
         
         self.base_url = "https://www.alphavantage.co/query"
         self.last_request_time = 0
-        self.min_request_interval = 12  # 调整为12秒，遵守API限制
+        self.min_request_interval = 12  # API限制
         
     def _make_request(self, params: Dict) -> Dict:
         """
@@ -54,6 +46,8 @@ class ForexDataTool:
                 raise Exception(f"API错误: {data['Error Message']}")
             if 'Note' in data:
                 print(f"API提示: {data['Note']}")  # 通常是速率限制提示
+            if 'Information' in data: # 有时速率限制是这个键
+                print(f"API信息: {data['Information']}")
             
             self.last_request_time = time.time()
             return data
@@ -74,6 +68,7 @@ class ForexDataTool:
         data = self._make_request(params)
         
         if 'Realtime Currency Exchange Rate' not in data:
+            print("API返回的完整响应内容（可能为速率限制提示）：", data) 
             raise Exception("未找到实时汇率数据")
         
         return self._parse_quote_data(data['Realtime Currency Exchange Rate'])
