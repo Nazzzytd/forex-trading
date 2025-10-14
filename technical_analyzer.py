@@ -2,15 +2,35 @@
 import talib
 import numpy as np
 import pandas as pd
-from typing import Dict
+from typing import Dict, Optional
+from openai import OpenAI
+from config import config
 
 class TechnicalAnalyzer:
     """
-    技术分析工具类 - 只进行技术指标计算
+    技术分析工具类 - 集成技术指标计算和AI分析
     """
     
-    def __init__(self):
-        pass
+    def __init__(self, api_key: str = None, base_url: str = None):
+        self.ai_enabled = False
+        self.openai_client = None
+        
+        # 初始化OpenAI客户端
+        openai_key = api_key or config.openai_api_key
+        openai_url = base_url or config.openai_base_url
+        
+        if openai_key and openai_url:
+            try:
+                self.openai_client = OpenAI(
+                    api_key=openai_key,
+                    base_url=openai_url
+                )
+                self.ai_enabled = True
+                print("✅ TechnicalAnalyzer AI功能已启用")
+            except Exception as e:
+                print(f"❌ TechnicalAnalyzer AI初始化失败: {e}")
+        else:
+            print("⚠️ TechnicalAnalyzer AI功能不可用")
     
     def calculate_indicators(self, df: pd.DataFrame, indicators_config: Dict = None) -> pd.DataFrame:
         """
@@ -128,12 +148,16 @@ class TechnicalAnalyzer:
         
         return df
     
-    def generate_signals(self, df: pd.DataFrame) -> Dict[str, Dict]:
+    def generate_signals(self, df: pd.DataFrame, use_ai: bool = False) -> Dict[str, Dict]:
         """
         生成交易信号
         
+        Args:
+            df: 包含技术指标的DataFrame
+            use_ai: 是否使用AI分析
+            
         Returns:
-            包含各种指标信号的字典
+            包含各种指标信号和AI分析的字典
         """
         if df.empty:
             return {"error": "数据为空"}
@@ -155,6 +179,12 @@ class TechnicalAnalyzer:
         
         # 生成综合信号
         signals['composite_signal'] = self._generate_composite_signal(signals)
+        
+        # AI分析
+        if use_ai and self.ai_enabled:
+            signals['ai_analysis'] = self._generate_ai_analysis(signals, df)
+        elif use_ai and not self.ai_enabled:
+            signals['ai_analysis'] = {"warning": "AI分析功能不可用"}
         
         return signals
     
@@ -363,3 +393,96 @@ class TechnicalAnalyzer:
             "bullish_signals": bullish_signals,
             "bearish_signals": bearish_signals
         }
+    
+    def _generate_ai_analysis(self, signals: Dict, df: pd.DataFrame) -> Dict:
+        """使用OpenAI进行深度技术分析"""
+        try:
+            # 构建详细的技术分析上下文
+            technical_context = self._create_detailed_technical_context(signals, df)
+            
+            prompt = f"""
+            你是一个资深的外汇交易分析师。请基于以下详细的技术分析数据，提供专业的交易分析：
+
+            {technical_context}
+
+            请从以下角度提供分析：
+            1. 当前市场状态评估（趋势、动量、波动性）
+            2. 各技术指标的协同性分析
+            3. 关键支撑位和阻力位识别
+            4. 交易机会评估和风险提示
+            5. 具体的交易策略建议（入场点、止损点、目标位）
+
+            请用专业、客观的语言，避免情绪化表达。
+            """
+            
+            response = self.openai_client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "你是专业的外汇交易分析师，擅长技术分析和风险管理。"},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=500,
+                temperature=0.3
+            )
+            
+            return {
+                "analysis": response.choices[0].message.content,
+                "timestamp": pd.Timestamp.now()
+            }
+            
+        except Exception as e:
+            return {"error": f"AI分析失败: {str(e)}"}
+    
+    def _create_detailed_technical_context(self, signals: Dict, df: pd.DataFrame) -> str:
+        """创建详细的技术分析上下文"""
+        context = []
+        
+        # 基础信息
+        symbol = signals.get('symbol', '未知')  # 确保从signals获取symbol
+        context.append(f"交易品种: {symbol}")
+        context.append(f"当前价格: {signals.get('price', 0):.4f}")
+        context.append(f"分析时间: {signals.get('timestamp', '未知')}")
+        context.append("")
+        
+        # 数据统计
+        if not df.empty:
+            price_change = df['close'].iloc[-1] - df['close'].iloc[0]
+            price_change_pct = (price_change / df['close'].iloc[0]) * 100
+            context.append(f"价格变化: {price_change:.4f} ({price_change_pct:.2f}%)")
+            context.append(f"分析周期: {len(df)} 根K线")
+            context.append("")
+        
+        # 详细技术指标
+        context.append("=== 技术指标详情 ===")
+        
+        # RSI分析
+        rsi = signals.get('rsi', {})
+        context.append(f"RSI: {rsi.get('value', 'N/A')} - 信号: {rsi.get('signal', '未知')} - 强度: {rsi.get('strength', 0)}%")
+        
+        # MACD分析
+        macd = signals.get('macd', {})
+        context.append(f"MACD: {macd.get('signal', '未知')} - 交叉: {macd.get('crossover_type', '无')}")
+        
+        # 布林带分析
+        bb = signals.get('bollinger_bands', {})
+        context.append(f"布林带: {bb.get('signal', '未知')} - 位置: {bb.get('position', 0):.3f}")
+        if bb.get('squeeze'):
+            context.append("  * 布林带收缩，预期波动加大")
+        
+        # 趋势分析
+        trend = signals.get('trend', {})
+        context.append(f"趋势方向: {trend.get('direction', '未知')} - 强度: {trend.get('strength', 0)}%")
+        
+        # 移动平均线
+        ma = signals.get('moving_averages', {})
+        context.append(f"均线排列: {ma.get('alignment', '未知')}")
+        
+        # 波动率分析
+        volatility = signals.get('volatility', {})
+        context.append(f"波动率: {volatility.get('level', '未知')} - ATR: {volatility.get('atr', 'N/A')}")
+        
+        # 综合信号
+        composite = signals.get('composite_signal', {})
+        context.append(f"综合建议: {composite.get('recommendation', '未知')} - 置信度: {composite.get('confidence', 0)}%")
+        
+        return "\n".join(context)
