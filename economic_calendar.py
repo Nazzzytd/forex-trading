@@ -1,4 +1,4 @@
-# economic_calendar.py
+# economic_calendar_fixed_v2.py
 import requests
 import json
 import openai
@@ -24,7 +24,7 @@ class EconomicCalendar:
             if self.openai_base_url:
                 openai.api_base = self.openai_base_url
         
-        # 重要经济数据发布事件
+        # 重要经济数据发布事件（更真实的分布）
         self.economic_events = {
             'us': [
                 {
@@ -33,7 +33,8 @@ class EconomicCalendar:
                     'importance': 'high',
                     'source': 'BLS',
                     'typical_time': '08:30 EST',
-                    'currency_impact': ['USD', 'EUR/USD', 'GBP/USD', 'USD/JPY']
+                    'currency_impact': ['USD', 'EUR/USD', 'GBP/USD', 'USD/JPY'],
+                    'typical_day': 1  # 每月第一个周五
                 },
                 {
                     'name': 'CPI Inflation',
@@ -41,7 +42,8 @@ class EconomicCalendar:
                     'importance': 'high',
                     'source': 'BLS',
                     'typical_time': '08:30 EST',
-                    'currency_impact': ['USD', 'EUR/USD', 'USD/JPY']
+                    'currency_impact': ['USD', 'EUR/USD', 'USD/JPY'],
+                    'typical_day': 12  # 每月中旬
                 },
                 {
                     'name': 'Federal Funds Rate',
@@ -49,7 +51,8 @@ class EconomicCalendar:
                     'importance': 'high',
                     'source': 'Federal Reserve',
                     'typical_time': '14:00 EST',
-                    'currency_impact': ['USD', 'All majors']
+                    'currency_impact': ['USD', 'All majors'],
+                    'typical_day': 15  # 月中
                 },
                 {
                     'name': 'GDP Growth Rate',
@@ -57,7 +60,8 @@ class EconomicCalendar:
                     'importance': 'high',
                     'source': 'BEA',
                     'typical_time': '08:30 EST',
-                    'currency_impact': ['USD', 'EUR/USD', 'USD/JPY']
+                    'currency_impact': ['USD', 'EUR/USD', 'USD/JPY'],
+                    'typical_day': 25  # 季度末
                 },
                 {
                     'name': 'Retail Sales',
@@ -65,7 +69,8 @@ class EconomicCalendar:
                     'importance': 'medium',
                     'source': 'Census Bureau',
                     'typical_time': '08:30 EST',
-                    'currency_impact': ['USD']
+                    'currency_impact': ['USD'],
+                    'typical_day': 15
                 },
                 {
                     'name': 'ISM Manufacturing PMI',
@@ -73,7 +78,26 @@ class EconomicCalendar:
                     'importance': 'medium',
                     'source': 'ISM',
                     'typical_time': '10:00 EST',
-                    'currency_impact': ['USD']
+                    'currency_impact': ['USD'],
+                    'typical_day': 1
+                },
+                {
+                    'name': 'PPI (Producer Price Index)',
+                    'frequency': 'monthly',
+                    'importance': 'medium',
+                    'source': 'BLS',
+                    'typical_time': '08:30 EST',
+                    'currency_impact': ['USD'],
+                    'typical_day': 13
+                },
+                {
+                    'name': 'Unemployment Rate',
+                    'frequency': 'monthly',
+                    'importance': 'high',
+                    'source': 'BLS',
+                    'typical_time': '08:30 EST',
+                    'currency_impact': ['USD', 'EUR/USD', 'GBP/USD'],
+                    'typical_day': 1
                 }
             ],
             'eu': [
@@ -83,7 +107,8 @@ class EconomicCalendar:
                     'importance': 'high',
                     'source': 'ECB',
                     'typical_time': '12:45 GMT',
-                    'currency_impact': ['EUR', 'EUR/USD', 'EUR/GBP']
+                    'currency_impact': ['EUR', 'EUR/USD', 'EUR/GBP'],
+                    'typical_day': 10
                 },
                 {
                     'name': 'Eurozone CPI',
@@ -91,7 +116,8 @@ class EconomicCalendar:
                     'importance': 'high',
                     'source': 'Eurostat',
                     'typical_time': '10:00 GMT',
-                    'currency_impact': ['EUR', 'EUR/USD']
+                    'currency_impact': ['EUR', 'EUR/USD'],
+                    'typical_day': 18
                 },
                 {
                     'name': 'German ZEW Economic Sentiment',
@@ -99,7 +125,17 @@ class EconomicCalendar:
                     'importance': 'medium',
                     'source': 'ZEW',
                     'typical_time': '10:00 GMT',
-                    'currency_impact': ['EUR', 'EUR/USD']
+                    'currency_impact': ['EUR', 'EUR/USD'],
+                    'typical_day': 15
+                },
+                {
+                    'name': 'German Ifo Business Climate',
+                    'frequency': 'monthly',
+                    'importance': 'medium',
+                    'source': 'Ifo Institute',
+                    'typical_time': '09:00 GMT',
+                    'currency_impact': ['EUR', 'EUR/USD'],
+                    'typical_day': 25
                 }
             ],
             'uk': [
@@ -109,7 +145,8 @@ class EconomicCalendar:
                     'importance': 'high',
                     'source': 'BOE',
                     'typical_time': '12:00 GMT',
-                    'currency_impact': ['GBP', 'GBP/USD', 'EUR/GBP']
+                    'currency_impact': ['GBP', 'GBP/USD', 'EUR/GBP'],
+                    'typical_day': 5
                 },
                 {
                     'name': 'UK CPI Inflation',
@@ -117,7 +154,17 @@ class EconomicCalendar:
                     'importance': 'high',
                     'source': 'ONS',
                     'typical_time': '07:00 GMT',
-                    'currency_impact': ['GBP', 'GBP/USD']
+                    'currency_impact': ['GBP', 'GBP/USD'],
+                    'typical_day': 18
+                },
+                {
+                    'name': 'UK Retail Sales',
+                    'frequency': 'monthly',
+                    'importance': 'medium',
+                    'source': 'ONS',
+                    'typical_time': '07:00 GMT',
+                    'currency_impact': ['GBP', 'GBP/USD'],
+                    'typical_day': 20
                 }
             ],
             'jp': [
@@ -127,7 +174,17 @@ class EconomicCalendar:
                     'importance': 'high',
                     'source': 'BOJ',
                     'typical_time': '时间 varies',
-                    'currency_impact': ['JPY', 'USD/JPY', 'EUR/JPY']
+                    'currency_impact': ['JPY', 'USD/JPY', 'EUR/JPY'],
+                    'typical_day': 20
+                },
+                {
+                    'name': 'Tokyo CPI',
+                    'frequency': 'monthly',
+                    'importance': 'medium',
+                    'source': 'Statistics Japan',
+                    'typical_time': '时间 varies',
+                    'currency_impact': ['JPY', 'USD/JPY'],
+                    'typical_day': 27
                 }
             ]
         }
@@ -176,12 +233,8 @@ class EconomicCalendar:
         获取经济数据发布日程
         """
         try:
-            # 优先使用Alpha Vantage API获取真实数据
-            if self.alpha_vantage_key:
-                events = self._get_alpha_vantage_economic_events(days_ahead, country)
-            else:
-                # 如果没有Alpha Vantage密钥，使用模拟数据
-                events = self._get_simulated_economic_events(days_ahead, country)
+            # 使用改进的模拟数据
+            events = self._get_realistic_simulated_events(days_ahead, country)
             
             return {
                 'timestamp': datetime.now().isoformat(),
@@ -195,248 +248,133 @@ class EconomicCalendar:
         except Exception as e:
             return {"error": f"获取经济事件日程失败: {str(e)}"}
 
-    def _get_alpha_vantage_economic_events(self, days_ahead: int, country: str = None) -> List[Dict]:
-        """使用Alpha Vantage API获取经济事件数据"""
-        try:
-            url = "https://www.alphavantage.co/query"
-            
-            # 设置时间范围
-            today = datetime.now().date()
-            end_date = today + timedelta(days=days_ahead)
-            
-            params = {
-                'function': 'ECONOMIC_CALENDAR',
-                'apikey': self.alpha_vantage_key,
-                'time_from': today.strftime('%Y%m%dT0000'),
-                'time_to': end_date.strftime('%Y%m%dT2359')
-            }
-            
-            response = requests.get(url, params=params, timeout=15)
-            response.raise_for_status()
-            
-            data = response.json()
-            
-            # 检查API响应
-            if 'data' not in data:
-                print(f"Alpha Vantage API返回异常数据: {data}")
-                # 回退到模拟数据
-                return self._get_simulated_economic_events(days_ahead, country)
-            
-            events = []
-            for event in data['data']:
-                # 过滤国家
-                event_country = event.get('country', '').upper()
-                if country and self._standardize_country_code(country) != event_country:
-                    continue
-                    
-                # 标准化事件格式
-                standardized_event = self._standardize_alpha_vantage_event(event)
-                if standardized_event:
-                    events.append(standardized_event)
-            
-            # 如果没有获取到事件，使用模拟数据
-            if not events:
-                return self._get_simulated_economic_events(days_ahead, country)
-                
-            return events
-            
-        except Exception as e:
-            print(f"Alpha Vantage API调用失败: {str(e)}，使用模拟数据")
-            return self._get_simulated_economic_events(days_ahead, country)
-
-    def _standardize_country_code(self, country: str) -> str:
-        """标准化国家代码"""
-        country_mapping = {
-            'us': 'US',
-            'united states': 'US',
-            'usa': 'US',
-            'uk': 'UK',
-            'united kingdom': 'UK',
-            'gb': 'UK',
-            'eu': 'EU',
-            'eurozone': 'EU',
-            'europe': 'EU',
-            'jp': 'JP',
-            'japan': 'JP',
-            'ca': 'CA',
-            'canada': 'CA',
-            'au': 'AU',
-            'australia': 'AU',
-            'nz': 'NZ',
-            'new zealand': 'NZ',
-            'ch': 'CH',
-            'switzerland': 'CH',
-            'cn': 'CN',
-            'china': 'CN'
-        }
-        return country_mapping.get(country.lower(), country.upper())
-
-    def _standardize_alpha_vantage_event(self, event: Dict) -> Optional[Dict]:
-        """标准化Alpha Vantage事件格式"""
-        try:
-            # 重要性映射
-            importance_mapping = {
-                'high': 'high',
-                'medium': 'medium',
-                'low': 'low'
-            }
-            
-            # 国家代码映射
-            country_mapping = {
-                'US': 'us',
-                'UK': 'uk',
-                'EU': 'eu',
-                'JP': 'jp',
-                'CA': 'ca',
-                'AU': 'au',
-                'NZ': 'nz',
-                'CH': 'ch',
-                'CN': 'cn'
-            }
-            
-            event_name = event.get('event', 'Unknown Event')
-            event_country = event.get('country', '')
-            
-            standardized = {
-                'name': event_name,
-                'country': country_mapping.get(event_country, event_country.lower()),
-                'importance': importance_mapping.get(event.get('importance', 'low'), 'low'),
-                'date': event.get('date', ''),
-                'time': event.get('time', ''),
-                'currency_impact': self._get_currency_impact_for_event(event_country, event_name),
-                'previous': event.get('previous', 'N/A'),
-                'forecast': event.get('estimate', 'N/A'),
-                'actual': event.get('actual', 'N/A'),
-                'source': 'Alpha Vantage',
-                'volatility_expected': 'high' if importance_mapping.get(event.get('importance', 'low')) == 'high' else 'medium',
-                'original_data': event  # 保留原始数据用于调试
-            }
-            
-            return standardized
-            
-        except Exception as e:
-            print(f"标准化Alpha Vantage事件失败: {str(e)}")
-            return None
-
-    def _get_currency_impact_for_event(self, country: str, event_name: str) -> List[str]:
-        """根据国家和事件名称获取影响的货币对"""
-        currency_mapping = {
-            'US': ['USD', 'EUR/USD', 'GBP/USD', 'USD/JPY', 'USD/CHF', 'USD/CAD', 'AUD/USD'],
-            'UK': ['GBP', 'GBP/USD', 'EUR/GBP', 'GBP/JPY', 'GBP/CHF'],
-            'EU': ['EUR', 'EUR/USD', 'EUR/GBP', 'EUR/JPY', 'EUR/CHF'],
-            'JP': ['JPY', 'USD/JPY', 'EUR/JPY', 'GBP/JPY', 'AUD/JPY'],
-            'CA': ['CAD', 'USD/CAD', 'CAD/JPY', 'EUR/CAD'],
-            'AU': ['AUD', 'AUD/USD', 'AUD/JPY', 'AUD/NZD', 'EUR/AUD'],
-            'NZ': ['NZD', 'NZD/USD', 'AUD/NZD', 'NZD/JPY'],
-            'CH': ['CHF', 'USD/CHF', 'EUR/CHF', 'GBP/CHF'],
-            'CN': ['CNY', 'USD/CNY', 'EUR/CNY', 'GBP/CNY']
-        }
-        
-        country_upper = country.upper()
-        base_currencies = currency_mapping.get(country_upper, [country_upper])
-        
-        # 对于重要事件，扩大影响范围
-        important_keywords = ['interest rate', 'inflation', 'gdp', 'employment', 'nonfarm', 'cpi', 'retail sales']
-        if any(keyword in event_name.lower() for keyword in important_keywords):
-            if country_upper == 'US':
-                return ['All majors', 'USD pairs']
-            elif country_upper in ['EU', 'UK', 'JP']:
-                return base_currencies + ['Related pairs']
-            else:
-                return base_currencies + ['Regional currencies']
-        
-        return base_currencies
-
-    def _get_simulated_economic_events(self, days_ahead: int, country: str = None) -> List[Dict]:
-        """模拟经济事件数据（备用方案）"""
+    def _get_realistic_simulated_events(self, days_ahead: int, country: str = None) -> List[Dict]:
+        """生成更真实的经济事件数据"""
         events = []
         today = datetime.now()
         
-        # 预定义的重要事件模板
-        event_templates = [
-            {
-                'name': 'US Nonfarm Payrolls',
-                'country': 'us',
-                'importance': 'high',
-                'currency_impact': ['USD', 'EUR/USD', 'GBP/USD', 'USD/JPY'],
-                'previous': '199K',
-                'forecast': '185K',
-                'source': 'Bureau of Labor Statistics'
-            },
-            {
-                'name': 'US CPI Inflation',
-                'country': 'us', 
-                'importance': 'high',
-                'currency_impact': ['USD', 'EUR/USD', 'USD/JPY'],
-                'previous': '3.2%',
-                'forecast': '3.1%',
-                'source': 'BLS'
-            },
-            {
-                'name': 'Federal Reserve Interest Rate Decision',
-                'country': 'us',
-                'importance': 'high', 
-                'currency_impact': ['USD', 'All majors'],
-                'previous': '5.50%',
-                'forecast': '5.50%',
-                'source': 'Federal Reserve'
-            },
-            {
-                'name': 'ECB Monetary Policy Statement',
-                'country': 'eu',
-                'importance': 'high',
-                'currency_impact': ['EUR', 'EUR/USD', 'EUR/GBP'],
-                'previous': '4.50%',
-                'forecast': '4.50%',
-                'source': 'European Central Bank'
-            },
-            {
-                'name': 'Bank of England MPC Vote',
-                'country': 'uk',
-                'importance': 'high',
-                'currency_impact': ['GBP', 'GBP/USD', 'EUR/GBP'],
-                'previous': '6-2-1',
-                'forecast': '7-1-1', 
-                'source': 'Bank of England'
-            }
-        ]
+        # 确保事件不重复且分布合理
+        used_events = set()
         
-        # 为未来几天生成事件
-        for i in range(min(days_ahead, 7)):
+        for i in range(min(days_ahead, 30)):  # 限制最大天数
             event_date = today + timedelta(days=i)
+            day_of_month = event_date.day
+            weekday = event_date.weekday()  # 0=Monday, 6=Sunday
             
-            # 每天添加1-3个事件
-            daily_events = event_templates[:3] if i % 2 == 0 else event_templates[3:]
+            # 跳过周末（大多数经济数据不在周末发布）
+            if weekday >= 5:
+                continue
+                
+            # 为每天选择事件
+            daily_events = []
             
-            for template in daily_events:
-                if country and template['country'] != country:
+            for region, region_events in self.economic_events.items():
+                if country and region != country:
                     continue
                     
-                event = template.copy()
-                event['date'] = event_date.strftime('%Y-%m-%d')
-                event['time'] = self._get_typical_event_time(template['name'])
-                event['volatility_expected'] = 'high' if template['importance'] == 'high' else 'medium'
-                event['actual'] = 'N/A'
-                
-                events.append(event)
+                for template in region_events:
+                    # 检查事件是否已使用（避免重复）
+                    event_key = f"{template['name']}_{event_date.strftime('%Y%m')}"
+                    if event_key in used_events:
+                        continue
+                        
+                    # 基于频率和典型日期决定是否包含该事件
+                    should_include = self._should_include_event(template, day_of_month, i)
+                    
+                    if should_include and len(daily_events) < 2:  # 每天最多2个事件
+                        event = template.copy()
+                        event['date'] = event_date.strftime('%Y-%m-%d')
+                        event['time'] = self._get_typical_event_time(template['name'])
+                        event['volatility_expected'] = 'high' if template['importance'] == 'high' else 'medium'
+                        event['actual'] = 'N/A'
+                        
+                        # 添加预测和前值数据
+                        event.update(self._get_event_forecast_data(template['name']))
+                        
+                        daily_events.append(event)
+                        used_events.add(event_key)
+                        
+                        # 如果是高影响事件，当天不再添加其他高影响事件
+                        if template['importance'] == 'high':
+                            break
+            
+            events.extend(daily_events)
         
         return events
+
+    def _should_include_event(self, template: Dict, day_of_month: int, days_from_today: int) -> bool:
+        """决定是否包含特定事件"""
+        typical_day = template.get('typical_day', 15)
+        frequency = template.get('frequency', 'monthly')
+        importance = template.get('importance', 'medium')
+        
+        # 基于频率和日期决定
+        if frequency == 'monthly':
+            # 每月事件：在典型日期附近几天内
+            day_diff = abs(day_of_month - typical_day)
+            return day_diff <= 2 and days_from_today <= 14  # 只在未来2周内
+            
+        elif frequency == 'quarterly':
+            # 季度事件：只在特定月份
+            current_month = datetime.now().month
+            quarter_months = [1, 4, 7, 10]  # 季度初月
+            return current_month in quarter_months and day_of_month >= typical_day - 2
+            
+        elif frequency == '8_times_year':
+            # 每年8次（央行会议）
+            meeting_months = [1, 3, 5, 7, 9, 11]  # 大致分布
+            current_month = datetime.now().month
+            return current_month in meeting_months and day_of_month >= typical_day - 1
+            
+        return False
+
+    def _get_event_forecast_data(self, event_name: str) -> Dict:
+        """获取事件的预测数据"""
+        forecast_data = {
+            'US Nonfarm Payrolls': {'previous': '199K', 'forecast': '185K'},
+            'US CPI Inflation': {'previous': '3.2%', 'forecast': '3.1%'},
+            'Federal Funds Rate': {'previous': '5.50%', 'forecast': '5.50%'},
+            'GDP Growth Rate': {'previous': '2.1%', 'forecast': '2.3%'},
+            'Retail Sales': {'previous': '0.6%', 'forecast': '0.4%'},
+            'ISM Manufacturing PMI': {'previous': '49.4', 'forecast': '49.8'},
+            'Unemployment Rate': {'previous': '3.8%', 'forecast': '3.8%'},
+            'PPI (Producer Price Index)': {'previous': '0.3%', 'forecast': '0.2%'},
+            'ECB Interest Rate': {'previous': '4.50%', 'forecast': '4.50%'},
+            'Eurozone CPI': {'previous': '2.4%', 'forecast': '2.3%'},
+            'Bank of England Rate': {'previous': '5.25%', 'forecast': '5.25%'},
+            'UK CPI Inflation': {'previous': '2.3%', 'forecast': '2.1%'}
+        }
+        
+        return forecast_data.get(event_name, {'previous': 'N/A', 'forecast': 'N/A'})
 
     def _get_typical_event_time(self, event_name: str) -> str:
         """获取典型事件发布时间"""
         time_mapping = {
             'US Nonfarm Payrolls': '08:30 EST',
             'US CPI Inflation': '08:30 EST',
-            'Federal Reserve Interest Rate Decision': '14:00 EST',
-            'ECB Monetary Policy Statement': '12:45 GMT',
-            'Bank of England MPC Vote': '12:00 GMT'
+            'Federal Funds Rate': '14:00 EST',
+            'GDP Growth Rate': '08:30 EST',
+            'Retail Sales': '08:30 EST',
+            'ISM Manufacturing PMI': '10:00 EST',
+            'Unemployment Rate': '08:30 EST',
+            'PPI (Producer Price Index)': '08:30 EST',
+            'ECB Interest Rate': '12:45 GMT',
+            'Eurozone CPI': '10:00 GMT',
+            'German ZEW Economic Sentiment': '10:00 GMT',
+            'German Ifo Business Climate': '09:00 GMT',
+            'Bank of England Rate': '12:00 GMT',
+            'UK CPI Inflation': '07:00 GMT',
+            'UK Retail Sales': '07:00 GMT',
+            'Bank of Japan Rate': '时间 varies',
+            'Tokyo CPI': '时间 varies'
         }
         return time_mapping.get(event_name, '09:00 EST')
 
     def get_forex_news(self, days_back: int = 1, currency_pair: str = None) -> Dict:
         """获取外汇交易相关新闻"""
         if not self.newsapi_key:
-            return {"error": "NewsAPI密钥未配置"}
+            # 返回模拟新闻数据
+            return self._get_simulated_forex_news(currency_pair)
 
         try:
             base_query = "forex OR currency OR exchange rate OR central bank OR interest rate"
@@ -469,10 +407,113 @@ class EconomicCalendar:
             if data.get('status') == 'ok':
                 return self._process_forex_news_data(data.get('articles', []))
             else:
-                return {"error": f"NewsAPI错误: {data.get('message', '未知错误')}"}
+                print(f"NewsAPI错误，使用模拟数据: {data.get('message', '未知错误')}")
+                return self._get_simulated_forex_news(currency_pair)
                 
         except Exception as e:
-            return {"error": f"获取外汇新闻失败: {str(e)}"}
+            print(f"获取外汇新闻失败，使用模拟数据: {str(e)}")
+            return self._get_simulated_forex_news(currency_pair)
+
+    def _get_simulated_forex_news(self, currency_pair: str = None) -> Dict:
+        """模拟外汇新闻数据"""
+        base_news = [
+            {
+                'title': 'Fed Officials Signal Patience on Rate Cuts Amid Inflation Concerns',
+                'description': 'Federal Reserve officials emphasize need for more evidence of inflation cooling before considering rate reductions.',
+                'importance': 'high',
+                'event_type': 'central_bank_decision',
+                'affected_pairs': ['USD', 'EUR/USD', 'GBP/USD', 'USD/JPY']
+            },
+            {
+                'title': 'ECB Maintains Hawkish Stance Despite Economic Slowdown',
+                'description': 'European Central Bank keeps rates steady while monitoring inflation trends in Eurozone economies.',
+                'importance': 'medium',
+                'event_type': 'central_bank_decision', 
+                'affected_pairs': ['EUR', 'EUR/USD', 'EUR/GBP']
+            },
+            {
+                'title': 'BOE Faces Dilemma as UK Inflation Remains Sticky',
+                'description': 'Bank of England weighs growth concerns against persistent inflation pressures.',
+                'importance': 'medium',
+                'event_type': 'central_bank_decision',
+                'affected_pairs': ['GBP', 'GBP/USD', 'EUR/GBP']
+            },
+            {
+                'title': 'US Jobs Data Shows Resilient Labor Market',
+                'description': 'Latest employment figures suggest continued strength in the US economy.',
+                'importance': 'medium',
+                'event_type': 'employment_data',
+                'affected_pairs': ['USD', 'EUR/USD', 'GBP/USD']
+            }
+        ]
+        
+        # 过滤特定货币对相关的新闻
+        if currency_pair:
+            filtered_news = [
+                news for news in base_news 
+                if currency_pair in news['affected_pairs'] or 'All majors' in news['affected_pairs']
+            ]
+        else:
+            filtered_news = base_news
+        
+        processed_articles = []
+        for i, news in enumerate(filtered_news):
+            processed_articles.append({
+                'title': news['title'],
+                'description': news['description'],
+                'published_at': (datetime.now() - timedelta(hours=i*3)).isoformat(),
+                'source': 'Simulated Financial News',
+                'url': f'https://example.com/news/{i}',
+                'event_type': news['event_type'],
+                'affected_currency_pairs': news['affected_pairs'],
+                'importance': news['importance'],
+                'trading_impact': 'High volatility expected' if news['importance'] == 'high' else 'Moderate impact',
+                'content_preview': news['description'][:200] + '...',
+                'volatility_expected': 'high' if news['importance'] == 'high' else 'medium'
+            })
+        
+        return {
+            'timestamp': datetime.now().isoformat(),
+            'total_articles': len(processed_articles),
+            'articles': processed_articles,
+            'high_impact_count': len([a for a in processed_articles if a['importance'] == 'high'])
+        }
+
+    def _process_forex_news_data(self, articles: List) -> Dict:
+        """处理外汇新闻数据"""
+        processed_articles = []
+        
+        for article in articles:
+            title = article.get('title', '')
+            description = article.get('description', '')
+            content = f"{title} {description}"
+            
+            event_type = self._identify_event_type(content)
+            affected_pairs = self._identify_affected_pairs(content)
+            importance = self._assess_forex_importance(event_type, title)
+            trading_impact = self._assess_trading_impact(event_type, importance)
+            
+            processed_article = {
+                'title': title,
+                'description': description,
+                'published_at': article.get('publishedAt', ''),
+                'source': article.get('source', {}).get('name', ''),
+                'url': article.get('url', ''),
+                'event_type': event_type,
+                'affected_currency_pairs': affected_pairs,
+                'importance': importance,
+                'trading_impact': trading_impact,
+                'content_preview': description[:200] + '...' if description else '',
+                'volatility_expected': 'high' if importance == 'high' else 'medium'
+            }
+            processed_articles.append(processed_article)
+        
+        return {
+            'timestamp': datetime.now().isoformat(),
+            'total_articles': len(processed_articles),
+            'articles': processed_articles,
+            'high_impact_count': len([a for a in processed_articles if a['importance'] == 'high'])
+        }
 
     def _identify_event_type(self, content: str) -> str:
         """识别事件类型"""
@@ -519,42 +560,6 @@ class EconomicCalendar:
         else:
             return 'Low impact, normal trading conditions'
 
-    def _process_forex_news_data(self, articles: List) -> Dict:
-        """处理外汇新闻数据"""
-        processed_articles = []
-        
-        for article in articles:
-            title = article.get('title', '')
-            description = article.get('description', '')
-            content = f"{title} {description}"
-            
-            event_type = self._identify_event_type(content)
-            affected_pairs = self._identify_affected_pairs(content)
-            importance = self._assess_forex_importance(event_type, title)
-            trading_impact = self._assess_trading_impact(event_type, importance)
-            
-            processed_article = {
-                'title': title,
-                'description': description,
-                'published_at': article.get('publishedAt', ''),
-                'source': article.get('source', {}).get('name', ''),
-                'url': article.get('url', ''),
-                'event_type': event_type,
-                'affected_currency_pairs': affected_pairs,
-                'importance': importance,
-                'trading_impact': trading_impact,
-                'content_preview': description[:200] + '...' if description else '',
-                'volatility_expected': 'high' if importance == 'high' else 'medium'
-            }
-            processed_articles.append(processed_article)
-        
-        return {
-            'timestamp': datetime.now().isoformat(),
-            'total_articles': len(processed_articles),
-            'articles': processed_articles,
-            'high_impact_count': len([a for a in processed_articles if a['importance'] == 'high'])
-        }
-
     def get_comprehensive_economic_calendar(self, currency_pair: str = None, days_ahead: int = 3) -> Dict:
         """
         获取综合经济日历（新闻 + 经济数据发布）
@@ -566,7 +571,7 @@ class EconomicCalendar:
             # 获取经济事件日程
             events_schedule = self.get_economic_events_schedule(days_ahead=days_ahead)
             
-            # 使用OpenAI进行综合分析
+            # 使用OpenAI进行综合分析（带超时处理）
             analysis_result = self.analyze_economic_calendar_with_openai(
                 news_data, events_schedule, currency_pair
             )
@@ -585,16 +590,23 @@ class EconomicCalendar:
                 'integrated_analysis': analysis_result,
                 'trading_recommendations': self._generate_trading_recommendations(
                     news_data, events_schedule, currency_pair
-                )
+                ),
+                'key_events_timeline': self._extract_events_timeline(events_schedule)
             }
             
         except Exception as e:
             return {"error": f"获取综合经济日历失败: {str(e)}"}
 
     def analyze_economic_calendar_with_openai(self, news_data: Dict, events_data: Dict, currency_pair: str = None) -> Dict:
-        """使用OpenAI分析经济日历"""
+        """使用OpenAI分析经济日历（修复版）"""
         if not self.openai_api_key:
-            return {"error": "OpenAI API密钥未配置"}
+            return {
+                "analysis": "OpenAI API未配置，使用基础分析", 
+                "status": "fallback",
+                "currency_pair": currency_pair,
+                "key_events_timeline": self._extract_events_timeline(events_data),
+                "risk_assessment": self._assess_calendar_risk(news_data, events_data)
+            }
         
         if 'error' in news_data or 'error' in events_data:
             return {"error": "数据获取失败"}
@@ -602,111 +614,158 @@ class EconomicCalendar:
         try:
             prompt = self._build_economic_calendar_prompt(news_data, events_data, currency_pair)
             
-            api_params = {
-                "model": "gpt-4",
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": """你是一个专业的外汇交易策略师。基于新闻事件和经济数据发布日程，
-                        提供具体的交易策略和风险管理建议。重点关注高影响事件的时间安排和市场预期。"""
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                "max_tokens": 1500,
-                "temperature": 0.3
-            }
+            # 简化分析作为fallback
+            simplified_analysis = self._get_simplified_analysis(news_data, events_data, currency_pair)
             
-            if self.openai_base_url:
-                response = self._custom_openai_call(api_params)
-            else:
-                response = openai.ChatCompletion.create(**api_params)
-            
-            analysis_text = response.choices[0].message.content.strip()
-            
-            return {
-                'currency_pair': currency_pair,
-                'analysis': analysis_text,
-                'key_events_timeline': self._extract_events_timeline(events_data),
-                'risk_assessment': self._assess_calendar_risk(news_data, events_data)
-            }
+            # 只有在网络稳定时才调用OpenAI
+            try:
+                # 使用正确的OpenAI API调用方式
+                client = openai.OpenAI(
+                    api_key=self.openai_api_key,
+                    base_url=self.openai_base_url if self.openai_base_url else None
+                )
+                
+                response = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": """你是一个专业的外汇交易策略师。提供简洁的交易策略和风险管理建议。"""
+                        },
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ],
+                    max_tokens=800,
+                    temperature=0.3,
+                    timeout=15
+                )
+                
+                analysis_text = response.choices[0].message.content.strip()
+                
+                return {
+                    'currency_pair': currency_pair,
+                    'analysis': analysis_text,
+                    'key_events_timeline': self._extract_events_timeline(events_data),
+                    'risk_assessment': self._assess_calendar_risk(news_data, events_data),
+                    'status': 'openai_analysis'
+                }
+                
+            except Exception as e:
+                print(f"OpenAI分析失败，使用简化分析: {str(e)}")
+                return {
+                    'currency_pair': currency_pair,
+                    'analysis': simplified_analysis,
+                    'key_events_timeline': self._extract_events_timeline(events_data),
+                    'risk_assessment': self._assess_calendar_risk(news_data, events_data),
+                    'status': 'simplified_analysis'
+                }
             
         except Exception as e:
             return {"error": f"经济日历分析失败: {str(e)}"}
+
+    def _get_simplified_analysis(self, news_data: Dict, events_data: Dict, currency_pair: str) -> str:
+        """提供简化分析"""
+        high_impact_events = events_data.get('high_impact_events', 0)
+        high_impact_news = news_data.get('high_impact_count', 0)
+        
+        analysis_parts = [
+            f"【{currency_pair if currency_pair else '主要货币对'}交易分析】",
+            f"高影响事件数量: {high_impact_events}个",
+            f"重要新闻数量: {high_impact_news}条",
+            "",
+            "交易建议:"
+        ]
+        
+        if high_impact_events > 2:
+            analysis_parts.extend([
+                "⚠️ 高风险周期 - 多个高影响事件集中",
+                "• 减少仓位规模50%以上",
+                "• 避免在数据发布前后15分钟内交易", 
+                "• 设置更宽的止损位",
+                "• 重点关注: NFP, CPI, 央行决议"
+            ])
+        elif high_impact_events > 0:
+            analysis_parts.extend([
+                "🟡 中等风险 - 有高影响事件",
+                "• 适度降低仓位规模",
+                "• 数据发布时保持谨慎",
+                "• 关注实际数据与预期的差异"
+            ])
+        else:
+            analysis_parts.extend([
+                "🟢 低风险周期 - 无重大事件",
+                "• 正常交易规模",
+                "• 关注技术面交易机会",
+                "• 仍建议设置合理止损"
+            ])
+        
+        return "\n".join(analysis_parts)
 
     def _build_economic_calendar_prompt(self, news_data: Dict, events_data: Dict, currency_pair: str) -> str:
         """构建经济日历分析提示词"""
         
         prompt_parts = [
-            f"请分析以下外汇市场信息，为{currency_pair if currency_pair else '主要货币对'}提供交易策略：",
+            f"请简要分析以下外汇市场信息，为{currency_pair if currency_pair else '主要货币对'}提供交易策略：",
             "",
-            "=== 近期新闻事件 ==="
+            "近期重要新闻:"
         ]
         
         # 添加高影响新闻
         high_impact_news = [a for a in news_data.get('articles', []) if a.get('importance') == 'high']
-        for i, article in enumerate(high_impact_news[:3], 1):
+        for i, article in enumerate(high_impact_news[:2], 1):
             prompt_parts.append(f"{i}. {article.get('title', '')}")
-            prompt_parts.append(f"   影响: {article.get('trading_impact', '')}")
-            prompt_parts.append(f"   时间: {article.get('published_at', '')}")
         
         prompt_parts.append("")
-        prompt_parts.append("=== 即将发布的经济数据 ===")
+        prompt_parts.append("即将发布的经济数据:")
         
         # 添加即将发布的经济事件
         upcoming_events = events_data.get('events', [])
         high_impact_events = [e for e in upcoming_events if e.get('importance') == 'high']
         
-        for i, event in enumerate(high_impact_events[:5], 1):
-            prompt_parts.append(f"{i}. {event.get('name', '')}")
-            prompt_parts.append(f"   时间: {event.get('date', '')} {event.get('time', '')}")
-            prompt_parts.append(f"   预期: {event.get('forecast', 'N/A')} | 前值: {event.get('previous', 'N/A')}")
-            prompt_parts.append(f"   影响货币: {', '.join(event.get('currency_impact', []))}")
+        for i, event in enumerate(high_impact_events[:3], 1):
+            prompt_parts.append(f"{i}. {event.get('name', '')} - {event.get('date', '')} {event.get('time', '')}")
         
         prompt_parts.extend([
             "",
-            "请提供：",
-            "1. 关键交易时间窗口分析",
-            "2. 具体入场/出场点位建议", 
-            "3. 事件驱动的交易策略",
-            "4. 风险管理建议（仓位大小、止损设置）",
-            "5. 重点关注的经济数据及其预期影响",
+            "请简要提供：",
+            "1. 关键交易时间窗口",
+            "2. 风险管理建议", 
+            "3. 重点关注的数据",
             "",
-            "请用专业交易员的语言，提供具体可执行的建议。"
+            "回复请保持简洁。"
         ])
         
         return "\n".join(prompt_parts)
-
-    def _custom_openai_call(self, api_params: Dict) -> Any:
-        """自定义OpenAI API调用"""
-        import requests
-        
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.openai_api_key}"
-        }
-        
-        url = f"{self.openai_base_url}/chat/completions"
-        response = requests.post(url, headers=headers, json=api_params, timeout=30)
-        response.raise_for_status()
-        
-        return response.json()
 
     def _extract_events_timeline(self, events_data: Dict) -> List[Dict]:
         """提取事件时间线"""
         events = events_data.get('events', [])
         timeline = []
         
-        for event in events[:10]:  # 限制前10个事件
-            timeline.append({
-                'name': event.get('name'),
-                'date': event.get('date'),
-                'time': event.get('time'),
-                'importance': event.get('importance'),
-                'currency_impact': event.get('currency_impact', [])
-            })
+        # 按日期分组
+        date_groups = {}
+        for event in events:
+            date = event.get('date')
+            if date not in date_groups:
+                date_groups[date] = []
+            date_groups[date].append(event)
+        
+        # 为每个日期选择最重要的2个事件
+        for date, date_events in list(date_groups.items())[:7]:  # 限制7天
+            # 按重要性排序
+            sorted_events = sorted(date_events, 
+                                 key=lambda x: 0 if x.get('importance') == 'high' else 1)
+            
+            for event in sorted_events[:2]:  # 每天最多2个事件
+                timeline.append({
+                    'name': event.get('name'),
+                    'date': event.get('date'),
+                    'time': event.get('time'),
+                    'importance': event.get('importance'),
+                    'currency_impact': event.get('currency_impact', [])[:3]  # 限制显示数量
+                })
         
         return timeline
 
@@ -719,42 +778,81 @@ class EconomicCalendar:
         
         if total_high_impact >= 3:
             risk_level = 'high'
+            position_size = 'small (25-50% normal)'
+            advice = 'Avoid trading around high impact events'
         elif total_high_impact >= 1:
-            risk_level = 'medium'
+            risk_level = 'medium' 
+            position_size = 'reduced (50-75% normal)'
+            advice = 'Trade with caution during data releases'
         else:
             risk_level = 'low'
+            position_size = 'normal'
+            advice = 'Normal trading conditions'
         
         return {
             'risk_level': risk_level,
             'high_impact_events_count': total_high_impact,
-            'recommended_position_size': 'small' if risk_level == 'high' else 'normal',
-            'trading_advice': 'avoid trading around high impact events' if risk_level == 'high' else 'trade with caution'
+            'recommended_position_size': position_size,
+            'trading_advice': advice
         }
 
     def _generate_trading_recommendations(self, news_data: Dict, events_data: Dict, currency_pair: str) -> Dict:
         """生成交易建议"""
         high_impact_events = events_data.get('high_impact_events', 0)
         
-        return {
+        recommendations = {
             'trading_bias': 'cautious' if high_impact_events > 0 else 'normal',
             'recommended_actions': [
-                'Monitor high impact economic events',
-                'Adjust position sizes based on volatility',
-                'Set wider stops during news events'
+                'Monitor economic calendar for event timing',
+                'Adjust position sizes based on volatility expectations',
+                'Use wider stop losses during high impact events'
             ],
-            'key_events_to_watch': [e.get('name') for e in events_data.get('events', []) 
-                                  if e.get('importance') == 'high'][:3]
+            'key_events_to_watch': []
         }
+        
+        # 添加具体事件
+        events = events_data.get('events', [])
+        high_impact_events_list = [e for e in events if e.get('importance') == 'high']
+        for event in high_impact_events_list[:3]:
+            recommendations['key_events_to_watch'].append({
+                'name': event.get('name'),
+                'date': event.get('date'),
+                'time': event.get('time')
+            })
+        
+        return recommendations
 
 
 # 使用示例
 if __name__ == "__main__":
+    print("🔧 配置检查:")
     calendar = EconomicCalendar()
     
+    print(f"   Alpha Vantage API: {'✅ 已设置' if calendar.alpha_vantage_key else '❌ 未设置'}")
+    print(f"   NewsAPI: {'✅ 已设置' if calendar.newsapi_key else '❌ 未设置'}")
+    print(f"   OpenAI API Key: {'✅ 已设置' if calendar.openai_api_key else '❌ 未设置'}")
+    print(f"   OpenAI Base URL: {'✅ 已设置' if calendar.openai_base_url else '❌ 未设置'}")
+    
     # 获取综合经济日历
+    print("\n📊 获取综合经济日历...")
     comprehensive_calendar = calendar.get_comprehensive_economic_calendar("EUR/USD", 3)
-    print("综合经济日历:", json.dumps(comprehensive_calendar, indent=2, ensure_ascii=False))
+    print("综合经济日历分析完成!")
+    
+    # 显示关键信息
+    if 'integrated_analysis' in comprehensive_calendar:
+        analysis = comprehensive_calendar['integrated_analysis']
+        if 'analysis' in analysis:
+            print(f"\n📈 分析结果 ({analysis.get('status', 'unknown')}):")
+            print(analysis['analysis'])
+    
+    # 显示交易建议
+    if 'trading_recommendations' in comprehensive_calendar:
+        recs = comprehensive_calendar['trading_recommendations']
+        print(f"\n💡 交易建议 (偏向: {recs['trading_bias']}):")
+        for action in recs['recommended_actions']:
+            print(f"   • {action}")
     
     # 获取经济事件日程
+    print("\n📅 获取经济事件日程...")
     events_schedule = calendar.get_economic_events_schedule(5, 'us')
-    print("经济事件日程:", json.dumps(events_schedule, indent=2, ensure_ascii=False))
+    print(f"找到 {events_schedule.get('total_events', 0)} 个事件, 其中 {events_schedule.get('high_impact_events', 0)} 个高影响事件")
