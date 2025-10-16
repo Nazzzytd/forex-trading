@@ -1,0 +1,149 @@
+# 工具定义文件 - UltraRAG 构建时读取这个文件
+name: "data_fetcher"
+description: "外汇数据获取工具 - 通过 Twelve Data API 获取实时和历史外汇数据"
+version: "1.0.0"
+
+# 工具类定义
+class:
+  file: "data_fetcher.py"
+  name: "DataFetcher"
+
+# 参数定义（UltraRAG 根据这个生成 parameter.yaml）
+parameters:
+  api_key:
+    type: "string"
+    description: "Twelve Data API 密钥"
+    required: true
+    default: "${TWELVEDATA_API_KEY}"
+    secret: true  # 标记为敏感信息
+    
+  min_request_interval:
+    type: "float" 
+    description: "最小请求间隔(秒) - 避免 API 频率限制"
+    default: 7.5
+    min: 1.0
+    max: 60.0
+    
+  max_daily_requests:
+    type: "integer"
+    description: "每日最大请求数 - API 限制"
+    default: 800
+    min: 1
+    max: 10000
+    
+  default_timeframe:
+    type: "string"
+    description: "默认时间框架"
+    default: "1h"
+    options: ["1min", "5min", "15min", "30min", "1h", "4h", "1day", "1week"]
+    
+  default_output_size:
+    type: "integer"
+    description: "默认输出数据点数"
+    default: 100
+    min: 1
+    max: 5000
+    
+  supported_pairs:
+    type: "list"
+    description: "支持的货币对列表"
+    default:
+      - "EUR/USD"
+      - "GBP/USD" 
+      - "USD/JPY"
+      - "USD/CHF"
+      - "AUD/USD"
+      - "USD/CAD"
+      - "NZD/USD"
+      - "EUR/GBP"
+      - "EUR/JPY"
+      - "GBP/JPY"
+    
+  cache_enabled:
+    type: "boolean"
+    description: "是否启用数据缓存"
+    default: true
+    
+  cache_duration:
+    type: "integer"
+    description: "缓存持续时间(秒)"
+    default: 300
+    min: 60
+    max: 3600
+    
+  data_validation:
+    type: "boolean"
+    description: "是否启用数据验证"
+    default: true
+    
+  min_data_points:
+    type: "integer"
+    description: "最小数据点数要求"
+    default: 10
+    min: 1
+    
+  include_basic_metrics:
+    type: "boolean"
+    description: "是否包含基础指标计算"
+    default: true
+    
+  analysis_ready_format:
+    type: "boolean"
+    description: "是否为分析组件优化输出格式"
+    default: true
+
+# 方法定义（UltraRAG 会暴露为 API 端点）
+methods:
+  fetch_data:
+    description: "获取外汇数据"
+    parameters:
+      currency_pair:
+        type: "string"
+        description: "货币对，如 EUR/USD"
+        required: true
+        example: "EUR/USD"
+      data_type:
+        type: "string" 
+        description: "数据类型"
+        default: "realtime"
+        options: ["realtime", "historical", "intraday"]
+      interval:
+        type: "string"
+        description: "时间间隔"
+        default: "1h"
+        options: ["1min", "5min", "15min", "30min", "1h", "4h", "1day"]
+      output_size:
+        type: "integer"
+        description: "数据点数"
+        default: 100
+        min: 1
+        max: 5000
+        
+  batch_fetch:
+    description: "批量获取多个货币对数据"
+    parameters:
+      queries:
+        type: "list"
+        description: "查询参数列表"
+        required: true
+        example: |
+          [
+            {"currency_pair": "EUR/USD", "data_type": "realtime"},
+            {"currency_pair": "GBP/USD", "data_type": "historical", "interval": "1day"}
+          ]
+        
+  get_usage_stats:
+    description: "获取 API 使用统计"
+    
+  health_check:
+    description: "健康检查 - 验证 API 连接和配置"
+    
+  get_supported_pairs:
+    description: "获取支持的货币对列表"
+
+# 元数据
+metadata:
+  category: "data_acquisition"
+  tags: ["forex", "api", "financial-data"]
+  author: "Forex Trading Agent"
+  created: "2024-01-01"

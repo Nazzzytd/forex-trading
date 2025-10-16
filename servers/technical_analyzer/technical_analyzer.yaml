@@ -1,0 +1,144 @@
+# 工具定义文件
+name: "technical_analyzer"
+description: "技术分析工具 - 集成多种技术指标计算和AI分析"
+version: "1.0.0"
+
+# 工具类定义
+class:
+  file: "technical_analyzer.py"
+  name: "TechnicalAnalyzer"
+
+# 参数定义
+parameters:
+  openai_api_key:
+    type: "string"
+    description: "OpenAI API密钥"
+    required: false
+    default: "${OPENAI_API_KEY}"
+    secret: true
+    
+  openai_base_url:
+    type: "string"
+    description: "OpenAI API BASE URL"
+    default: "${OPENAI_BASE_URL}"
+    
+  # 技术指标配置
+  rsi_period:
+    type: "integer"
+    description: "RSI周期"
+    default: 14
+    min: 5
+    max: 30
+    
+  macd_fast:
+    type: "integer"
+    description: "MACD快线周期"
+    default: 12
+    min: 5
+    max: 26
+    
+  macd_slow:
+    type: "integer"
+    description: "MACD慢线周期"
+    default: 26
+    min: 10
+    max: 50
+    
+  macd_signal:
+    type: "integer"
+    description: "MACD信号线周期"
+    default: 9
+    min: 5
+    max: 20
+    
+  bb_period:
+    type: "integer"
+    description: "布林带周期"
+    default: 20
+    min: 10
+    max: 50
+    
+  bb_std:
+    type: "float"
+    description: "布林带标准差倍数"
+    default: 2.0
+    min: 1.0
+    max: 3.0
+    
+  stoch_k_period:
+    type: "integer"
+    description: "随机指标K线周期"
+    default: 14
+    min: 5
+    max: 30
+    
+  stoch_d_period:
+    type: "integer"
+    description: "随机指标D线周期"
+    default: 3
+    min: 2
+    max: 10
+    
+  ema_periods:
+    type: "list"
+    description: "EMA移动平均线周期列表"
+    default:
+      - 5
+      - 10
+      - 20
+      - 50
+      - 200
+
+# 方法定义
+methods:
+  calculate_indicators:
+    description: "计算技术指标"
+    parameters:
+      data:
+        type: "list"
+        description: "OHLC数据列表"
+        required: true
+        example: |
+          [
+            {
+              "datetime": "2024-01-01",
+              "open": 1.1000,
+              "high": 1.1050, 
+              "low": 1.0950,
+              "close": 1.1020,
+              "volume": 1000
+            }
+          ]
+      symbol:
+        type: "string"
+        description: "交易品种符号"
+        default: "UNKNOWN"
+        
+  generate_signals:
+    description: "生成交易信号"
+    parameters:
+      data:
+        type: "list"
+        description: "OHLC数据列表"
+        required: true
+      symbol:
+        type: "string"
+        description: "交易品种符号"
+        default: "UNKNOWN"
+      use_ai:
+        type: "boolean"
+        description: "是否使用AI分析"
+        default: false
+        
+  health_check:
+    description: "健康检查"
+    
+  get_analysis_config:
+    description: "获取当前分析配置"
+
+# 元数据
+metadata:
+  category: "technical_analysis"
+  tags: ["forex", "technical-analysis", "trading", "ai-analysis"]
+  author: "Forex Trading Agent"
+  dependencies: ["talib", "pandas", "numpy", "openai"]
