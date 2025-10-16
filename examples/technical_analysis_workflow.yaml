@@ -1,0 +1,50 @@
+name: "technical_analysis_workflow"
+description: "技术分析工作流 - 结合数据获取和技术分析"
+
+tools:
+  - name: "data_fetcher"
+    server_type: "data_fetcher"
+    parameters:
+      api_key: "${TWELVEDATA_API_KEY}"
+      default_timeframe: "1h"
+      cache_enabled: true
+
+  - name: "technical_analyzer"
+    server_type: "technical_analyzer"
+    parameters:
+      openai_api_key: "${OPENAI_API_KEY}"
+      openai_base_url: "${OPENAI_BASE_URL}"
+      rsi_period: 14
+      macd_fast: 12
+      macd_slow: 26
+      use_ai_analysis: true
+
+workflow:
+  - step: "fetch_forex_data"
+    tool: "data_fetcher"
+    method: "fetch_data"
+    inputs:
+      currency_pair: "EUR/USD"
+      data_type: "historical"
+      interval: "1day"
+      output_size: 50
+    store_result_as: "raw_data"  # 显式存储
+
+  - step: "calculate_technical_indicators"
+    tool: "technical_analyzer"
+    method: "calculate_indicators"
+    inputs:
+      data: "{{raw_data}}"  # 传递整个响应对象
+      symbol: "EUR/USD"
+
+  - step: "generate_trading_signals"
+    tool: "technical_analyzer"
+    method: "generate_signals"
+    inputs:
+      data: "{{raw_data}}"  # 传递整个响应对象
+      symbol: "EUR/USD"
+      use_ai: true
+
+  - step: "health_check"
+    tool: "technical_analyzer"
+    method: "health_check"

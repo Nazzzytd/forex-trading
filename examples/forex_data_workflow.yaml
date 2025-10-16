@@ -1,0 +1,49 @@
+name: "forex_real_data_workflow"
+description: "外汇真实数据获取工作流 - 使用 Twelve Data API"
+
+tools:
+  - name: "data_fetcher"
+    server_type: "data_fetcher"
+    parameters:
+      api_key: "${TWELVEDATA_API_KEY}"
+      default_timeframe: "1h"
+      cache_enabled: true
+      supported_pairs:
+        - "EUR/USD"
+        - "GBP/USD"
+        - "USD/JPY"
+        - "AUD/USD"
+
+workflow:
+  - step: "health_check"
+    tool: "data_fetcher"
+    method: "health_check"
+    
+  - step: "fetch_eur_usd_realtime"
+    tool: "data_fetcher"
+    method: "fetch_data"
+    inputs:
+      currency_pair: "EUR/USD"
+      data_type: "realtime"
+    
+  - step: "fetch_gbp_usd_historical"
+    tool: "data_fetcher"
+    method: "fetch_data"
+    inputs:
+      currency_pair: "GBP/USD"
+      data_type: "historical"
+      interval: "1day"
+      output_size: 5
+    
+  - step: "fetch_usd_jpy_intraday"
+    tool: "data_fetcher"
+    method: "fetch_data"
+    inputs:
+      currency_pair: "USD/JPY"
+      data_type: "intraday"
+      interval: "1h"
+      output_size: 10
+    
+  - step: "get_usage_stats"
+    tool: "data_fetcher"
+    method: "get_usage_stats"
