@@ -18,75 +18,54 @@ except ImportError:
 
 class EconomicCalendar:
     """
-    UltraRAG 经济日历工具 - 使用Alpha Vantage获取外汇新闻和重要经济数据发布信息，并利用OpenAI进行分析
+    智能经济日历分析工具 - 提供详细的经济事件解释、市场影响分析和交易建议
     """
 
     def __init__(self, config: Dict = None):
         if config is None:
-            # 自动加载配置
             try:
                 loader = ConfigLoader()
                 config_path = os.path.join(os.path.dirname(__file__), "economic_calendar_parameter.yaml")
                 config = loader.load_config(config_path)
             except Exception as e:
-                print(f"⚠️ 配置文件加载失败: {e}")
+                print(f"配置加载失败: {e}")
                 config = {}
         
-        # 统一使用 alpha_api_key
-        self.alpha_vantage_key = config.get("alpha_api_key")
-        
-        # 如果配置中没有找到，直接从环境变量获取
-        if not self.alpha_vantage_key or self.alpha_vantage_key.startswith("${"):
-            self.alpha_vantage_key = os.getenv("ALPHA_VANTAGE_API_KEY")
-            print("🔧 从环境变量直接获取 Alpha Vantage API 密钥")
-        
+        # API密钥配置
+        self.alpha_vantage_key = config.get("alpha_api_key") or os.getenv("ALPHA_VANTAGE_API_KEY")
         self.openai_api_key = config.get("openai_api_key") or os.getenv("OPENAI_API_KEY")
         self.openai_base_url = config.get("openai_base_url") or os.getenv("OPENAI_BASE_URL")
         
-        print(f"🔧 最终配置:")
-        print(f"   Alpha Vantage Key: {'✅ 已设置' if self.alpha_vantage_key else '❌ 未设置'}")
-        print(f"   OpenAI Key: {'✅ 已设置' if self.openai_api_key else '❌ 未设置'}")
+        # 配置参数
+        self.daily_limit = config.get("daily_api_limit", 25)
+        self.enable_detailed_explanations = config.get("enable_detailed_explanations", True)
+        self.include_market_expectations = config.get("include_market_expectations", True)
         
-        # 测试模式检测
-        self.test_mode = (self.alpha_vantage_key == "TEST_MODE" or 
-                         not self.alpha_vantage_key or 
-                         self.alpha_vantage_key.startswith("${"))
+        # 测试模式
+        self.test_mode = not self.alpha_vantage_key or self.alpha_vantage_key.startswith("${")
         
-        if self.test_mode:
-            print("🔧 运行在测试模式，将使用模拟数据")
-        
-        # API使用统计和限制
+        # API限制管理
         self.api_call_count = 0
-        self.last_api_call_time = None
-        self.daily_limit = 25  # Alpha Vantage 免费版限制
         
-        # 缓存机制
-        self.news_cache = {}
-        self.events_cache = {}
-        self.cache_ttl = 300  # 5分钟缓存
-        
-        # 配置OpenAI客户端
+        # 配置OpenAI
         if self.openai_api_key and not self.openai_api_key.startswith("${"):
             try:
                 self.openai_client = openai.OpenAI(
                     api_key=self.openai_api_key,
                     base_url=self.openai_base_url
                 )
-                print("✅ EconomicCalendar OpenAI功能已启用")
-            except Exception as e:
-                print(f"❌ EconomicCalendar OpenAI初始化失败: {e}")
+            except Exception:
                 self.openai_client = None
-        else:
-            print("⚠️ EconomicCalendar OpenAI功能不可用 - 请检查 OPENAI_API_KEY 配置")
-            self.openai_client = None
         
-        # Alpha Vantage相关配置
         self.alpha_vantage_base_url = "https://www.alphavantage.co/query"
         
-        # 外汇相关主题
-        self.forex_topics = "economy_monetary,financial_markets"
+        # 支持的货币对
+        self.supported_currency_pairs = [
+            'EUR/USD', 'GBP/USD', 'USD/JPY', 'USD/CHF', 
+            'AUD/USD', 'USD/CAD', 'NZD/USD'
+        ]
         
-        # 货币对到股票代码的映射（用于新闻过滤）
+        # 货币对映射
         self.currency_to_tickers = {
             'EUR/USD': ['EURUSD', 'EUR', 'USD'],
             'GBP/USD': ['GBPUSD', 'GBP', 'USD'],
@@ -94,1074 +73,979 @@ class EconomicCalendar:
             'USD/CHF': ['USDCHF', 'USD', 'CHF'],
             'AUD/USD': ['AUDUSD', 'AUD', 'USD'],
             'USD/CAD': ['USDCAD', 'USD', 'CAD'],
-            'NZD/USD': ['NZDUSD', 'NZD', 'USD'],
-            'EUR/GBP': ['EURGBP', 'EUR', 'GBP'],
-            'EUR/JPY': ['EURJPY', 'EUR', 'JPY']
+            'NZD/USD': ['NZDUSD', 'NZD', 'USD']
         }
 
-        # 重要经济数据发布事件
-        self.economic_events = {
-            'us': [
-                {
-                    'name': 'Nonfarm Payrolls',
-                    'frequency': 'monthly',
-                    'importance': 'high',
-                    'source': 'BLS',
-                    'typical_time': '08:30 EST',
-                    'currency_impact': ['USD', 'EUR/USD', 'GBP/USD', 'USD/JPY'],
-                    'typical_day': 1,
-                    'av_ticker': 'NFP'
+        # 详细经济事件解释词典
+        self.detailed_event_explanations = {
+            'US Nonfarm Payrolls': {
+                'what_is_it': '美国非农就业数据，衡量美国非农业部门就业人数月度变化',
+                'why_it_matters': '反映美国劳动力市场健康状况，是美联储货币政策决策的关键指标',
+                'typical_impact': {
+                    'direction': '数据好于预期利好美元，差于预期利空美元',
+                    'magnitude': '高波动性，通常引发50-100点波动',
+                    'duration': '影响持续数小时至数天'
                 },
-                {
-                    'name': 'CPI Inflation',
-                    'frequency': 'monthly', 
-                    'importance': 'high',
-                    'source': 'BLS',
-                    'typical_time': '08:30 EST',
-                    'currency_impact': ['USD', 'EUR/USD', 'USD/JPY'],
-                    'typical_day': 12,
-                    'av_ticker': 'CPI'
+                'affected_currencies': ['USD', 'EUR/USD', 'GBP/USD', 'USD/JPY'],
+                'market_expectations': {
+                    'consensus_forecast': '基于经济学家调查的中位数预期',
+                    'previous_value': '参考上月修正值',
+                    'deviation_impact': '偏离预期0.1%可能引发显著波动'
                 },
-                {
-                    'name': 'Federal Funds Rate',
-                    'frequency': '8_times_year',
-                    'importance': 'high',
-                    'source': 'Federal Reserve',
-                    'typical_time': '14:00 EST',
-                    'currency_impact': ['USD', 'All majors'],
-                    'typical_day': 15,
-                    'av_ticker': 'FED'
+                'trading_implications': {
+                    'pre_event_strategy': '减少仓位，设置宽止损',
+                    'post_event_reaction': '等待数据公布后5-10分钟再入场',
+                    'risk_management': '使用事件驱动交易策略，严格控制仓位'
+                }
+            },
+            'US CPI Data': {
+                'what_is_it': '美国消费者物价指数，衡量一篮子消费品和服务的价格变化',
+                'why_it_matters': '核心通胀指标，直接影响美联储利率决策',
+                'typical_impact': {
+                    'direction': '通胀高于预期利好美元，低于预期利空美元',
+                    'magnitude': '极高波动性，核心CPI尤其重要',
+                    'duration': '影响持续至下次美联储会议'
                 },
-                {
-                    'name': 'GDP Growth Rate',
-                    'frequency': 'quarterly',
-                    'importance': 'high',
-                    'source': 'BEA',
-                    'typical_time': '08:30 EST',
-                    'currency_impact': ['USD', 'EUR/USD', 'USD/JPY'],
-                    'typical_day': 25,
-                    'av_ticker': 'GDP'
+                'affected_currencies': ['USD', '所有主要货币对'],
+                'market_expectations': {
+                    'consensus_forecast': '关注核心CPI年率预期',
+                    'previous_value': '对比上月数据趋势',
+                    'deviation_impact': '核心CPI偏离0.1%可能改变市场预期'
+                },
+                'trading_implications': {
+                    'pre_event_strategy': '避免在数据公布前建立新仓位',
+                    'post_event_reaction': '关注市场对美联储政策的重新定价',
+                    'risk_management': '使用突破策略，关注关键技术水平'
                 }
-            ],
-            'eu': [
-                {
-                    'name': 'ECB Interest Rate',
-                    'frequency': '8_times_year',
-                    'importance': 'high',
-                    'source': 'ECB',
-                    'typical_time': '12:45 GMT',
-                    'currency_impact': ['EUR', 'EUR/USD', 'EUR/GBP'],
-                    'typical_day': 10,
-                    'av_ticker': 'ECB'
+            },
+            'Federal Reserve Meeting': {
+                'what_is_it': '美联储联邦公开市场委员会议息会议',
+                'why_it_matters': '决定美国货币政策走向，影响全球资金流向',
+                'typical_impact': {
+                    'direction': '鹰派信号利好美元，鸽派信号利空美元',
+                    'magnitude': '极高波动性，声明措辞变化关键',
+                    'duration': '影响持续数周至数月'
+                },
+                'affected_currencies': ['USD', '所有货币对', '黄金'],
+                'market_expectations': {
+                    'consensus_forecast': '关注利率点阵图和通胀预期',
+                    'previous_value': '对比上次会议声明变化',
+                    'deviation_impact': '声明措辞的任何变化都重要'
+                },
+                'trading_implications': {
+                    'pre_event_strategy': '减少风险暴露，关注技术位',
+                    'post_event_reaction': '仔细分析声明和新闻发布会',
+                    'risk_management': '分阶段建仓，使用追踪止损'
                 }
-            ],
-            'uk': [
-                {
-                    'name': 'Bank of England Rate',
-                    'frequency': '8_times_year',
-                    'importance': 'high',
-                    'source': 'BOE',
-                    'typical_time': '12:00 GMT',
-                    'currency_impact': ['GBP', 'GBP/USD', 'EUR/GBP'],
-                    'typical_day': 5,
-                    'av_ticker': 'BOE'
+            },
+            'ECB Interest Rate Decision': {
+                'what_is_it': '欧洲央行货币政策会议和利率决议',
+                'why_it_matters': '决定欧元区货币政策，影响欧元汇率',
+                'typical_impact': {
+                    'direction': '加息或鹰派利好欧元，降息或鸽派利空欧元',
+                    'magnitude': '高波动性，新闻发布会尤其重要',
+                    'duration': '影响持续至下次会议'
+                },
+                'affected_currencies': ['EUR', 'EUR/USD', 'EUR/GBP', 'EUR/JPY'],
+                'market_expectations': {
+                    'consensus_forecast': '关注利率决定和资产购买计划',
+                    'previous_value': '对比通胀和经济展望',
+                    'deviation_impact': '拉加德讲话基调变化影响重大'
+                },
+                'trading_implications': {
+                    'pre_event_strategy': '关注欧元区通胀和经济增长数据',
+                    'post_event_reaction': '分析货币政策声明和记者会',
+                    'risk_management': '设置事件驱动止损单'
                 }
-            ],
-            'jp': [
-                {
-                    'name': 'Bank of Japan Rate',
-                    'frequency': '8_times_year',
-                    'importance': 'high',
-                    'source': 'BOJ',
-                    'typical_time': '时间 varies',
-                    'currency_impact': ['JPY', 'USD/JPY', 'EUR/JPY'],
-                    'typical_day': 20,
-                    'av_ticker': 'BOJ'
+            },
+            'Bank of England Rate Decision': {
+                'what_is_it': '英国央行货币政策委员会利率决议',
+                'why_it_matters': '决定英国基准利率，影响英镑汇率',
+                'typical_impact': {
+                    'direction': '加息利好英镑，降息利空英镑',
+                    'magnitude': '高波动性，投票分裂程度重要',
+                    'duration': '影响持续数天至数周'
+                },
+                'affected_currencies': ['GBP', 'GBP/USD', 'EUR/GBP'],
+                'market_expectations': {
+                    'consensus_forecast': '关注利率投票比例',
+                    'previous_value': '对比通胀报告预测',
+                    'deviation_impact': '意外投票结果影响显著'
+                },
+                'trading_implications': {
+                    'pre_event_strategy': '分析英国通胀和就业数据',
+                    'post_event_reaction': '关注会议纪要和行长讲话',
+                    'risk_management': '使用新闻交易策略'
                 }
-            ]
+            }
         }
 
-        # 外汇交易相关事件关键词映射
-        self.event_keywords = {
-            'central_bank_decision': [
-                'interest rate decision', 'federal reserve', 'fed meeting', 'ecb decision',
-                'bank of england', 'boe meeting', 'bank of japan', 'boj meeting',
-                'monetary policy', 'central bank', 'rate hike', 'rate cut', 'fomc'
-            ],
-            'inflation_data': [
-                'cpi', 'consumer price index', 'inflation data', 'core cpi',
-                'pce price index', 'inflation report', 'price pressure', 'inflation rate'
-            ],
-            'employment_data': [
-                'nonfarm payrolls', 'nfp', 'unemployment rate', 'jobless claims',
-                'employment change', 'adp employment', 'wage growth', 'jobs report',
-                'employment report'
-            ],
-            'gdp_growth': [
-                'gdp growth', 'gross domestic product', 'economic growth',
-                'preliminary gdp', 'final gdp', 'recession', 'expansion', 'gdp report'
-            ]
-        }
-
-        print(f"✅ Economic Calendar 初始化完成")
-        print(f"   Alpha Vantage: {'✅ 启用' if self.alpha_vantage_key and not self.test_mode else '❌ 禁用/测试模式'}")
-        print(f"   OpenAI分析: {'✅ 启用' if self.openai_client else '❌ 禁用'}")
-        print(f"   每日API限制: {self.daily_limit} 次调用")
-        print(f"   缓存TTL: {self.cache_ttl} 秒")
-
-    def get_news_sentiment(self, topics: str = None, tickers: str = None, limit: int = 50) -> Dict:
-        """
-        使用Alpha Vantage获取市场新闻和情绪数据
-        """
-        if not self.alpha_vantage_key:
-            return {
-                "success": False,
-                "error": "Alpha Vantage API密钥未配置",
-                "source": "economic_calendar"
-            }
-        
-        # 测试模式直接返回模拟数据
-        if self.test_mode:
-            print("🔧 测试模式：返回模拟新闻数据")
-            return self._get_simulated_news()
-        
-        # 检查API限制
-        if self._is_api_limit_reached():
-            print("⚠️ API调用限制已到达，使用模拟数据")
-            return self._get_simulated_news()
-        
-        # 生成缓存键
-        cache_key = f"news_{topics}_{tickers}_{limit}"
-        if cache_key in self.news_cache:
-            cache_time, cached_data = self.news_cache[cache_key]
-            if (datetime.now() - cache_time).seconds < self.cache_ttl:
-                print("🔍 使用缓存的新闻数据")
-                cached_data["source"] = "cached_data"
-                return cached_data
-        
+    # ==================== 主要公共接口 ====================
+    
+    def get_trading_analysis(self, currency_pair: str = None, days_ahead: int = 3, include_fundamental_analysis: bool = True) -> Dict:
+        """获取详细的交易分析和经济事件解释"""
         try:
-            params = {
-                'function': 'NEWS_SENTIMENT',
-                'apikey': self.alpha_vantage_key,
-                'sort': 'LATEST',
-                'limit': min(limit, 50)
-            }
+            # 处理多货币对分析
+            if currency_pair is None:
+                return self._get_multi_currency_analysis(days_ahead, include_fundamental_analysis)
             
-            if topics:
-                # 支持多个 topics 用逗号分隔
-                topic_list = [t.strip() for t in topics.split(',')]
-                valid_topics = []
-                
-                valid_alpha_topics = [
-                    'blockchain', 'earnings', 'ipo', 'mergers_and_acquisitions', 
-                    'financial_markets', 'economy_fiscal', 'economy_monetary', 
-                    'economy_macro', 'energy_transportation', 'finance', 
-                    'life_sciences', 'manufacturing', 'real_estate', 'retail_wholesale', 
-                    'technology'
-                ]
-                
-                for topic in topic_list:
-                    if topic in valid_alpha_topics:
-                        valid_topics.append(topic)
-                
-                if valid_topics:
-                    params['topics'] = ",".join(valid_topics[:2])  # Alpha Vantage 限制最多2个topics
-            
-            if tickers:
-                params['tickers'] = tickers
-            
-            print(f"🔍 发送新闻API请求参数: {params}")
-            
-            # 记录API调用
-            self.api_call_count += 1
-            self.last_api_call_time = datetime.now()
-            print(f"📊 API调用统计: {self.api_call_count}/{self.daily_limit}")
-            
-            response = requests.get(self.alpha_vantage_base_url, params=params, timeout=15)
-            response.raise_for_status()
-            
-            data = response.json()
-            
-            # 检查API限制信息
-            if 'Information' in data:
-                print(f"ℹ️ API信息: {data['Information']}")
-            if 'Note' in data:
-                print(f"📝 API限制提示: {data['Note']}")
-            
-            if 'feed' not in data:
-                print("⚠️ 未找到新闻数据，使用模拟数据")
-                simulated_data = self._get_simulated_news()
-                # 缓存模拟数据以避免重复API调用
-                self.news_cache[cache_key] = (datetime.now(), simulated_data)
-                return simulated_data
-            
-            processed_data = self._process_news(data['feed'])
-            processed_data["success"] = True
-            processed_data["api_calls_remaining"] = self.daily_limit - self.api_call_count
-            
-            # 缓存结果
-            self.news_cache[cache_key] = (datetime.now(), processed_data)
-            return processed_data
-            
-        except Exception as e:
-            print(f"Alpha Vantage新闻获取失败: {str(e)}")
-            simulated_data = self._get_simulated_news()
-            self.news_cache[cache_key] = (datetime.now(), simulated_data)
-            return simulated_data
-
-    def _is_api_limit_reached(self) -> bool:
-        """检查是否达到API限制"""
-        # 检查是否是同一天
-        if self.last_api_call_time and self.last_api_call_time.date() != datetime.now().date():
-            # 新的一天，重置计数器
-            self.api_call_count = 0
-            print("🔄 新的一天，重置API调用计数器")
-            return False
-        
-        if self.api_call_count >= self.daily_limit:
-            print(f"🚫 已达到每日API限制: {self.api_call_count}/{self.daily_limit}")
-            return True
-        
-        return False
-
-    def get_forex_specific_news(self, currency_pair: str = None, days_back: int = 1) -> Dict:
-        """获取特定货币对相关的外汇新闻"""
-        try:
-            if currency_pair and currency_pair in self.currency_to_tickers:
-                tickers = ",".join(self.currency_to_tickers[currency_pair])
-                result = self.get_news_sentiment(
-                    topics=self.forex_topics,
-                    tickers=tickers,
-                    limit=20
-                )
-            else:
-                result = self.get_news_sentiment(
-                    topics=self.forex_topics,
-                    limit=20
-                )
-            
-            # 确保返回结果有 success 字段
-            if result and "success" not in result:
-                result["success"] = True
-            return result
-            
-        except Exception as e:
-            return {
-                "success": False,
-                "error": f"获取外汇新闻失败: {str(e)}",
-                "source": "economic_calendar"
-            }
-
-    def get_economic_events_schedule(self, days_ahead: int = 7, country: str = None) -> Dict:
-        """获取经济数据发布日程"""
-        try:
-            # 检查缓存
-            cache_key = f"events_{days_ahead}_{country}"
-            if cache_key in self.events_cache:
-                cache_time, cached_data = self.events_cache[cache_key]
-                if (datetime.now() - cache_time).seconds < self.cache_ttl:
-                    print("🔍 使用缓存的事件数据")
-                    return cached_data
-            
-            real_events = self._get_economic_calendar(days_ahead, country)
-            if real_events:
-                real_events["success"] = True
-                self.events_cache[cache_key] = (datetime.now(), real_events)
-                return real_events
-            
-            events = self._get_realistic_simulated_events(days_ahead, country)
-            result = {
-                "success": True,
-                'timestamp': datetime.now().isoformat(),
-                'timeframe': f'next_{days_ahead}_days',
-                'country_filter': country,
-                'total_events': len(events),
-                'high_impact_events': len([e for e in events if e.get('importance') == 'high']),
-                'events': events,
-                'source': 'simulated_data'
-            }
-            
-            self.events_cache[cache_key] = (datetime.now(), result)
-            return result
-            
-        except Exception as e:
-            return {
-                "success": False,
-                "error": f"获取经济事件日程失败: {str(e)}",
-                "source": "economic_calendar"
-            }
-
-    def get_comprehensive_economic_calendar(self, currency_pair: str = None, days_ahead: int = 3) -> Dict:
-        """获取综合经济日历（Alpha Vantage新闻 + 经济数据发布）"""
-        try:
-            # 验证输入参数
-            if days_ahead < 1 or days_ahead > 7:
+            # 验证货币对
+            if not self._is_valid_currency_pair(currency_pair):
                 return {
                     "success": False,
-                    "error": "days_ahead 参数必须在 1-7 范围内",
-                    "source": "economic_calendar"
-                }
-                
-            news_data = self.get_forex_specific_news(currency_pair)
-            events_schedule = self.get_economic_events_schedule(days_ahead=days_ahead)
-            
-            # 如果新闻数据获取失败，使用模拟数据
-            if not news_data.get("success"):
-                print("⚠️ 新闻数据获取失败，使用模拟新闻数据")
-                news_data = self._get_simulated_news()
-            
-            # 如果事件数据获取失败，使用模拟数据
-            if not events_schedule.get("success"):
-                print("⚠️ 事件数据获取失败，使用模拟事件数据")
-                events_schedule = {
-                    "success": True,
-                    'timestamp': datetime.now().isoformat(),
-                    'timeframe': f'next_{days_ahead}_days',
-                    'total_events': 3,
-                    'high_impact_events': 1,
-                    'events': self._get_realistic_simulated_events(days_ahead),
-                    'source': 'simulated_data'
+                    "error": f"不支持的货币对: {currency_pair}",
+                    "supported_pairs": self.supported_currency_pairs,
+                    "analysis_timestamp": datetime.now().isoformat()
                 }
             
-            analysis_result = self.analyze_economic_calendar_with_openai(
-                news_data, events_schedule, currency_pair
-            )
+            # 获取市场数据
+            news_data = self._get_enhanced_news(currency_pair)
+            events_data = self._get_enhanced_events(days_ahead)
             
-            return {
-                "success": True,
-                'currency_pair': currency_pair,
-                'timeframe': f'next_{days_ahead}_days',
-                'news_summary': {
-                    'total_articles': news_data.get('total_articles', 0),
-                    'high_impact_news': news_data.get('high_impact_count', 0),
-                    'overall_sentiment': news_data.get('overall_sentiment', {}),
-                    'bullish_count': news_data.get('bullish_count', 0),
-                    'bearish_count': news_data.get('bearish_count', 0),
-                    'source': news_data.get('source', 'unknown')
-                },
-                'economic_events': {
-                    'total_events': events_schedule.get('total_events', 0),
-                    'high_impact_events': events_schedule.get('high_impact_events', 0),
-                    'source': events_schedule.get('source', 'unknown')
-                },
-                'integrated_analysis': analysis_result,
-                'key_events_timeline': self._extract_events_timeline(events_schedule),
-                'market_sentiment_analysis': self._analyze_market_sentiment(news_data),
-                'api_usage': {
-                    'calls_made': self.api_call_count,
-                    'calls_remaining': self.daily_limit - self.api_call_count,
-                    'test_mode': self.test_mode
-                },
-                'source': 'economic_calendar'
-            }
+            # 增强AI分析
+            analysis = self._get_detailed_trading_advice(news_data, events_data, currency_pair)
+            
+            # 构建详细输出
+            return self._build_detailed_output(news_data, events_data, analysis, currency_pair, include_fundamental_analysis)
             
         except Exception as e:
             return {
                 "success": False,
-                "error": f"获取综合经济日历失败: {str(e)}",
-                "source": "economic_calendar"
+                "error": f"分析失败: {str(e)}",
+                "currency_pair": currency_pair,
+                "analysis_timestamp": datetime.now().isoformat()
             }
+
+    def get_economic_event_details(self, event_name: str, currency_pair: str = None) -> Dict:
+        """获取特定经济事件的详细解释"""
+        explanation = self.detailed_event_explanations.get(event_name)
+        
+        if not explanation:
+            return {
+                "success": False,
+                "error": f"未找到事件 '{event_name}' 的详细解释",
+                "available_events": list(self.detailed_event_explanations.keys())
+            }
+        
+        return {
+            "success": True,
+            "event_name": event_name,
+            "currency_pair": currency_pair,
+            "detailed_explanation": explanation,
+            "trading_advice": self._generate_event_specific_advice(event_name, currency_pair)
+        }
 
     def health_check(self) -> Dict:
         """健康检查"""
-        try:
-            # 测试基本功能
-            test_news = self.get_forex_specific_news("EUR/USD")
-            test_events = self.get_economic_events_schedule(1)
-            
-            return {
-                "success": True,
-                "status": "healthy",
-                "alpha_vantage_working": test_news.get("success", False) and not self.test_mode,
-                "openai_working": self.openai_client is not None,
-                "test_mode": self.test_mode,
-                "api_usage": {
-                    "calls_made": self.api_call_count,
-                    "calls_remaining": self.daily_limit - self.api_call_count,
-                    "daily_limit": self.daily_limit
-                },
-                "cache_status": {
-                    "news_cache_size": len(self.news_cache),
-                    "events_cache_size": len(self.events_cache)
-                },
-                "test_currency_pair": "EUR/USD",
-                "news_articles_count": test_news.get('total_articles', 0) if test_news.get("success") else 0,
-                "events_count": test_events.get('total_events', 0) if test_events.get("success") else 0
-            }
-            
-        except Exception as e:
-            return {
-                "success": False,
-                "status": "unhealthy",
-                "error": str(e)
-            }
-
-    def get_calendar_config(self) -> Dict:
-        """获取当前配置"""
         return {
             "success": True,
-            "alpha_vantage_enabled": bool(self.alpha_vantage_key) and not self.test_mode,
-            "openai_enabled": self.openai_client is not None,
+            "status": "operational",
+            "api_remaining": self.daily_limit - self.api_call_count,
             "test_mode": self.test_mode,
-            "api_limits": {
-                "daily_limit": self.daily_limit,
-                "calls_made": self.api_call_count,
-                "calls_remaining": self.daily_limit - self.api_call_count
+            "ai_enabled": self.openai_client is not None,
+            "features_enabled": {
+                "detailed_explanations": self.enable_detailed_explanations,
+                "market_expectations": self.include_market_expectations
             },
-            "cache_settings": {
-                "news_cache_ttl": self.cache_ttl,
-                "news_cache_size": len(self.news_cache),
-                "events_cache_size": len(self.events_cache)
-            },
-            "supported_currency_pairs": list(self.currency_to_tickers.keys()),
-            "available_methods": [
-                "get_forex_specific_news",
-                "get_economic_events_schedule", 
-                "get_comprehensive_economic_calendar",
-                "health_check"
-            ]
+            "supported_currency_pairs": self.supported_currency_pairs
         }
 
-    # 其他辅助方法保持不变...
-    def _process_news(self, news_feed: List) -> Dict:
-        """处理Alpha Vantage新闻数据"""
-        processed_articles = []
-        
-        for article in news_feed[:30]:
+    # ==================== 多货币对分析 ====================
+    
+    def _is_valid_currency_pair(self, currency_pair: str) -> bool:
+        """验证货币对是否支持"""
+        return currency_pair in self.supported_currency_pairs
+
+    def _get_multi_currency_analysis(self, days_ahead: int, include_fundamental: bool) -> Dict:
+        """获取多货币对分析"""
+        analyses = {}
+        for pair in self.supported_currency_pairs:
             try:
-                title = article.get('title', '')
-                summary = article.get('summary', '')
-                published = article.get('time_published', '')
-                source = article.get('source', 'Unknown')
-                url = article.get('url', '')
+                # 直接实现分析逻辑，避免递归调用
+                news_data = self._get_enhanced_news(pair)
+                events_data = self._get_enhanced_events(days_ahead)
+                analysis = self._get_detailed_trading_advice(news_data, events_data, pair)
                 
-                sentiment_info = article.get('overall_sentiment_score', 0)
-                sentiment_label = article.get('overall_sentiment_label', 'neutral')
-                relevance_score = article.get('relevance_score', '0')
-                
-                ticker_sentiment = article.get('ticker_sentiment', [])
-                topics = [item['topic'] for item in article.get('topics', [])]
-                
-                related_currencies = self._extract_currencies_from_tickers(ticker_sentiment)
-                event_type = self._identify_event_type(title + " " + summary)
-                importance = self._assess_news_importance(sentiment_label, event_type, title, float(relevance_score))
-                trading_impact = self._assess_trading_impact_from_sentiment(sentiment_label, importance, sentiment_info)
-                
-                processed_articles.append({
-                    'title': title,
-                    'summary': summary,
-                    'published_at': published,
-                    'source': source,
-                    'url': url,
-                    'sentiment_score': sentiment_info,
-                    'sentiment_label': sentiment_label,
-                    'relevance_score': relevance_score,
-                    'related_tickers': [item['ticker'] for item in ticker_sentiment],
-                    'ticker_sentiment': ticker_sentiment,
-                    'topics': topics,
-                    'event_type': event_type,
-                    'affected_currency_pairs': related_currencies,
-                    'importance': importance,
-                    'trading_impact': trading_impact,
-                    'volatility_expected': 'high' if importance == 'high' else 'medium',
-                    'content_preview': summary[:150] + '...' if len(summary) > 150 else summary
-                })
-                
+                analyses[pair] = self._build_detailed_output(
+                    news_data, events_data, analysis, pair, include_fundamental
+                )
             except Exception as e:
-                print(f"处理新闻文章时出错: {e}")
-                continue
-        
-        overall_sentiment = self._calculate_overall_sentiment(processed_articles)
-        
-        return {
-            'timestamp': datetime.now().isoformat(),
-            'total_articles': len(processed_articles),
-            'articles': processed_articles,
-            'overall_sentiment': overall_sentiment,
-            'high_impact_count': len([a for a in processed_articles if a['importance'] == 'high']),
-            'bullish_count': len([a for a in processed_articles if a['sentiment_label'] == 'bullish']),
-            'bearish_count': len([a for a in processed_articles if a['sentiment_label'] == 'bearish']),
-            'source': 'Alpha Vantage'
-        }
-
-    def _extract_currencies_from_tickers(self, ticker_sentiment: List) -> List[str]:
-        """从股票代码中提取相关货币对"""
-        currencies = set()
-        
-        for item in ticker_sentiment:
-            ticker = item.get('ticker', '')
-            if ticker in ['EURUSD', 'GBPUSD', 'USDJPY', 'USDCHF', 'AUDUSD', 'USDCAD', 'NZDUSD']:
-                currencies.add(ticker)
-            elif ticker in ['EUR', 'USD', 'GBP', 'JPY', 'CHF', 'AUD', 'CAD', 'NZD']:
-                for pair in self.currency_to_tickers.keys():
-                    if ticker in pair:
-                        currencies.add(pair)
-        
-        return list(currencies) if currencies else ['Multiple pairs']
-
-    def _calculate_overall_sentiment(self, articles: List) -> Dict:
-        """计算整体市场情绪"""
-        if not articles:
-            return {'score': 0, 'label': 'neutral', 'strength': 'weak'}
-        
-        scores = [a['sentiment_score'] for a in articles if a.get('sentiment_score') is not None]
-        if not scores:
-            return {'score': 0, 'label': 'neutral', 'strength': 'weak'}
-        
-        avg_score = sum(scores) / len(scores)
-        
-        if avg_score >= 0.35:
-            label = 'bullish'
-            strength = 'strong' if avg_score >= 0.6 else 'moderate'
-        elif avg_score <= -0.35:
-            label = 'bearish'
-            strength = 'strong' if avg_score <= -0.6 else 'moderate'
-        else:
-            label = 'neutral'
-            strength = 'weak'
-        
-        return {
-            'score': round(avg_score, 3),
-            'label': label,
-            'strength': strength,
-            'description': f"整体市场情绪{label}，强度{strength}"
-        }
-
-    def _assess_news_importance(self, sentiment_label: str, event_type: str, title: str, relevance_score: float) -> str:
-        """评估新闻重要性"""
-        high_impact_keywords = [
-            'rate decision', 'interest rate', 'nonfarm payrolls', 'nfp', 
-            'cpi', 'inflation', 'gdp', 'federal reserve', 'ecb', 'boe', 'boj'
-        ]
-        
-        title_lower = title.lower()
-        score = 0
-        
-        if sentiment_label in ['bullish', 'bearish']:
-            score += 2
-        
-        if event_type in ['central_bank_decision', 'inflation_data', 'employment_data']:
-            score += 2
-        
-        if any(keyword in title_lower for keyword in high_impact_keywords):
-            score += 2
-        
-        score += relevance_score
-        
-        if score >= 4:
-            return 'high'
-        elif score >= 2:
-            return 'medium'
-        else:
-            return 'low'
-
-    def _assess_trading_impact_from_sentiment(self, sentiment_label: str, importance: str, sentiment_score: float) -> str:
-        """基于情绪评估交易影响"""
-        sentiment_strength = "强烈" if abs(sentiment_score) >= 0.5 else "温和"
-        
-        if importance == 'high':
-            if sentiment_label == 'bearish':
-                return f'高负面影响预期，{sentiment_strength}看跌情绪，建议避险头寸'
-            elif sentiment_label == 'bullish':
-                return f'高正面影响预期，{sentiment_strength}看涨情绪，建议风险头寸'
-            else:
-                return f'高影响事件，{sentiment_strength}中性情绪，密切监控'
-        elif importance == 'medium':
-            return '中等影响，谨慎交易，注意风险管理'
-        else:
-            return '低影响，正常交易环境'
-
-    def _get_simulated_news(self) -> Dict:
-        """生成模拟新闻数据作为回退"""
-        simulated_articles = [
-            {
-                'title': 'Federal Reserve Maintains Interest Rates Amid Stable Inflation',
-                'summary': 'The Federal Reserve kept interest rates unchanged as inflation remains within target range.',
-                'published_at': datetime.now().isoformat(),
-                'source': 'Simulated Data',
-                'url': '',
-                'sentiment_score': 0.1,
-                'sentiment_label': 'neutral',
-                'relevance_score': '0.8',
-                'related_tickers': ['USD', 'EUR'],
-                'ticker_sentiment': [],
-                'topics': ['central_banks', 'monetary_policy'],
-                'event_type': 'central_bank_decision',
-                'affected_currency_pairs': ['EUR/USD', 'GBP/USD', 'USD/JPY'],
-                'importance': 'high',
-                'trading_impact': '高影响事件，密切关注美联储政策',
-                'volatility_expected': 'high',
-                'content_preview': '美联储维持利率不变...'
-            }
-        ]
+                analyses[pair] = {
+                    "success": False, 
+                    "error": str(e),
+                    "currency_pair": pair
+                }
         
         return {
             "success": True,
-            'timestamp': datetime.now().isoformat(),
-            'total_articles': len(simulated_articles),
-            'articles': simulated_articles,
-            'overall_sentiment': {'score': 0.18, 'label': 'neutral', 'strength': 'weak'},
-            'high_impact_count': 1,
-            'bullish_count': 1,
-            'bearish_count': 0,
-            'source': 'simulated_data'
+            "analysis_type": "multi_currency",
+            "currency_pairs_analyzed": list(analyses.keys()),
+            "individual_analyses": analyses,
+            "summary": self._generate_multi_currency_summary(analyses),
+            "analysis_timestamp": datetime.now().isoformat()
         }
 
-    def _identify_event_type(self, content: str) -> str:
-        """识别事件类型"""
-        content_lower = content.lower()
+    def _generate_multi_currency_summary(self, analyses: Dict) -> Dict:
+        """生成多货币对分析摘要"""
+        bullish_pairs = []
+        bearish_pairs = []
+        successful_analyses = 0
         
-        for event_type, keywords in self.event_keywords.items():
-            if any(keyword in content_lower for keyword in keywords):
-                return event_type
+        for pair, analysis in analyses.items():
+            if analysis.get("success"):
+                successful_analyses += 1
+                bias = analysis.get("trading_recommendation", {}).get("overall_bias", "")
+                if "做多" in bias:
+                    bullish_pairs.append(pair)
+                elif "做空" in bias:
+                    bearish_pairs.append(pair)
         
-        return 'other'
+        return {
+            "bullish_pairs": bullish_pairs,
+            "bearish_pairs": bearish_pairs,
+            "successful_analyses": successful_analyses,
+            "total_pairs": len(analyses),
+            "market_outlook": "分化" if bullish_pairs and bearish_pairs else "一致",
+            "dominant_bias": "看涨" if len(bullish_pairs) > len(bearish_pairs) else "看跌" if len(bearish_pairs) > len(bullish_pairs) else "中性"
+        }
 
-    def _get_economic_calendar(self, days_ahead: int, country: str = None) -> Optional[Dict]:
-        """
-        使用新闻情感数据来模拟经济日历
-        """
-        if not self.alpha_vantage_key or self.test_mode:
-            print("⚠️ Alpha Vantage API密钥未配置或测试模式，使用模拟数据")
-            return None
+    # ==================== 数据获取层 ====================
+    
+    def _get_enhanced_news(self, currency_pair: str) -> Dict:
+        """获取增强的新闻数据分析"""
+        if self.test_mode or self._is_api_limit_reached():
+            return self._get_enhanced_simulated_sentiment(currency_pair)
         
         try:
-            # 使用 NEWS_SENTIMENT 而不是 ECONOMIC_CALENDAR
+            tickers = ",".join(self.currency_to_tickers.get(currency_pair, ['EUR', 'USD']))
             params = {
                 'function': 'NEWS_SENTIMENT',
                 'apikey': self.alpha_vantage_key,
-                'topics': 'economy_monetary,economy_fiscal,economy_macro,financial_markets',
+                'topics': 'economy_monetary,financial_markets',
+                'tickers': tickers,
                 'sort': 'LATEST',
-                'limit': 20
+                'limit': 15
             }
             
-            # 根据国家过滤相关主题
-            country_topics = {
-                'us': 'federal reserve,interest rates,us economy',
-                'eu': 'ecb,european central bank,eurozone',
-                'uk': 'bank of england,uk economy,brexit',
-                'jp': 'bank of japan,japan economy'
-            }
+            self.api_call_count += 1
             
-            if country and country in country_topics:
-                print(f"🔍 获取 {country} 相关经济新闻")
-            
-            print(f"🔍 发送新闻情感API请求: {params}")
-            
-            response = requests.get(self.alpha_vantage_base_url, params=params, timeout=15)
-            response.raise_for_status()
-            
+            response = requests.get(self.alpha_vantage_base_url, params=params, timeout=10)
             data = response.json()
             
-            print(f"📊 Alpha Vantage 新闻响应键: {list(data.keys())}")
-            
-            # 检查API限制或错误信息
-            if 'Information' in data:
-                print(f"ℹ️ API信息: {data['Information']}")
-                return None
-            if 'Note' in data:
-                print(f"📝 API限制提示: {data['Note']}")
-                return None
-            if 'Error Message' in data:
-                print(f"❌ API错误: {data['Error Message']}")
-                return None
-            
-            if 'feed' in data:
-                # 处理新闻数据作为经济事件
-                events = self._convert_news_to_economic_events(data['feed'], days_ahead)
-                print(f"✅ 成功获取 {len(events)} 个经济相关事件")
-                return {
-                    'events': events,
-                    'source': 'alpha_vantage_news'
-                }
+            if 'feed' in data and data['feed']:
+                return self._process_enhanced_news(data['feed'], currency_pair)
             else:
-                print(f"⚠️ 未找到新闻数据，使用模拟数据")
-                return None
-            
-        except requests.exceptions.Timeout:
-            print(f"❌ Alpha Vantage 请求超时")
-            return None
-        except requests.exceptions.RequestException as e:
-            print(f"❌ Alpha Vantage 网络请求失败: {e}")
-            return None
-        except Exception as e:
-            print(f"❌ Alpha Vantage 新闻获取失败: {e}")
-            return None
+                return self._get_enhanced_simulated_sentiment(currency_pair)
+                
+        except Exception:
+            return self._get_enhanced_simulated_sentiment(currency_pair)
 
-    def _convert_news_to_economic_events(self, news_feed: List, days_ahead: int) -> List[Dict]:
-        """将新闻数据转换为经济事件格式"""
-        events = []
-        today = datetime.now()
+    def _get_enhanced_events(self, days_ahead: int) -> Dict:
+        """
+        通过 Alpha Vantage API 获取重要的历史经济指标数据
+        专注于已发布的实际数据
+        """
+        if self.test_mode or self._is_api_limit_reached() or not self.alpha_vantage_key:
+            return self._get_historical_economic_data_fallback()
         
-        for article in news_feed[:10]:  # 只处理前10篇文章
+        economic_data_events = []
+        successful_indicators = 0
+        
+        # 定义要获取的重要经济指标
+        indicator_configs = [
+            {
+                'function': 'CPI',
+                'interval': 'monthly',
+                'name_zh': '美国消费者物价指数 (CPI)',
+                'impact': '高',
+                'currency': 'USD',
+                'description': '衡量美国通胀水平的核心指标'
+            },
+            {
+                'function': 'FEDERAL_FUNDS_RATE', 
+                'interval': 'monthly',
+                'name_zh': '美国联邦基金利率',
+                'impact': '极高',
+                'currency': 'USD',
+                'description': '美联储货币政策基准利率'
+            },
+            {
+                'function': 'UNEMPLOYMENT',
+                'interval': 'monthly',
+                'name_zh': '美国失业率',
+                'impact': '高', 
+                'currency': 'USD',
+                'description': '反映美国劳动力市场状况'
+            }
+        ]
+
+        for config in indicator_configs:
             try:
-                title = article.get('title', '')
-                summary = article.get('summary', '')
-                published = article.get('time_published', '')
-                source = article.get('source', 'Unknown')
+                if self._is_api_limit_reached():
+                    break
+                    
+                self.api_call_count += 1
+                    
+                params = {
+                    'function': config['function'],
+                    'apikey': self.alpha_vantage_key,
+                }
                 
-                # 识别事件类型和重要性 - 修复参数顺序
-                event_type = self._identify_event_type(title + " " + summary)
-                sentiment_label = article.get('overall_sentiment_label', 'neutral')
-                relevance_score = float(article.get('relevance_score', 0))
+                # 为需要interval参数的指标添加interval
+                if config['function'] in ['CPI', 'UNEMPLOYMENT']:
+                    params['interval'] = config['interval']
                 
-                importance = self._assess_news_importance(
-                    sentiment_label,      # 第一个参数
-                    event_type,           # 第二个参数  
-                    title,                # 第三个参数
-                    relevance_score       # 第四个参数
-                )
-                
-                # 提取相关货币对
-                ticker_sentiment = article.get('ticker_sentiment', [])
-                related_currencies = self._extract_currencies_from_tickers(ticker_sentiment)
-                
-                # 解析发布时间
-                event_date = today
-                if published:
-                    try:
-                        # 尝试解析 Alpha Vantage 的时间格式: 20241020T000000
-                        if 'T' in published:
-                            date_part = published.split('T')[0]
-                            event_date = datetime.strptime(date_part, '%Y%m%d')
-                    except:
-                        pass
-                
-                events.append({
-                    'event_name': title[:100],  # 限制标题长度
-                    'country': self._infer_country_from_content(title + " " + summary),
-                    'date': event_date.strftime('%Y-%m-%d'),
-                    'time': event_date.strftime('%H:%M'),
-                    'importance': importance,
-                    'currency_impact': related_currencies if related_currencies else ['Multiple'],
-                    'previous_value': 'N/A',
-                    'forecast': 'N/A', 
-                    'actual': 'N/A',
-                    'source': source,
-                    'description': summary[:200] + '...' if len(summary) > 200 else summary,
-                    'event_type': event_type
-                })
-                
-            except Exception as e:
-                print(f"处理新闻文章时出错: {e}")
-                continue
-        
-        return events
+                response = requests.get(self.alpha_vantage_base_url, params=params, timeout=10)
+                response.raise_for_status()
+                data = response.json()
 
-    def _infer_country_from_content(self, content: str) -> str:
-        """从内容推断国家"""
-        content_lower = content.lower()
-        
-        country_keywords = {
-            'us': ['federal reserve', 'fed', 'us ', 'united states', 'dollar', 'wall street'],
-            'eu': ['ecb', 'european central bank', 'eurozone', 'euro ', 'brussels'],
-            'uk': ['bank of england', 'boe', 'uk ', 'united kingdom', 'pound', 'brexit'],
-            'jp': ['bank of japan', 'boj', 'japan', 'yen', 'tokyo']
-        }
-        
-        for country, keywords in country_keywords.items():
-            if any(keyword in content_lower for keyword in keywords):
-                return country.upper()
-        
-        return 'GLOBAL'
-
-    def _get_realistic_simulated_events(self, days_ahead: int, country: str = None) -> List[Dict]:
-        """
-        生成模拟经济事件数据
-        """
-        events = []
-        today = datetime.now()
-        
-        for i in range(days_ahead):
-            event_date = today + timedelta(days=i)
-            
-            # 遍历所有国家的事件模板
-            for country_code, country_events in self.economic_events.items():
-                # 按国家过滤
-                if country and country_code != country:
+                # 检查API限制或错误
+                if 'Error Message' in data or 'Note' in data:
                     continue
                     
-                for event_template in country_events:
-                    # 检查是否是典型发布日（简化逻辑）
-                    if event_date.day == event_template['typical_day']:
-                        events.append({
-                            'event_name': event_template['name'],
-                            'country': country_code.upper(),
-                            'date': event_date.strftime('%Y-%m-%d'),
-                            'time': event_template['typical_time'],
-                            'importance': event_template['importance'],
-                            'currency_impact': event_template['currency_impact'],
-                            'previous_value': '待发布',
-                            'forecast': '待发布',
-                            'actual': '待发布',
-                            'source': event_template['source']
-                        })
-        
-        # 如果没有找到事件，添加一些默认事件
-        if not events:
-            default_events = [
-                {
-                    'event_name': 'US Federal Reserve Meeting',
-                    'country': 'US',
-                    'date': (today + timedelta(days=1)).strftime('%Y-%m-%d'),
-                    'time': '14:00 EST',
-                    'importance': 'high',
-                    'currency_impact': ['USD', 'All majors'],
-                    'previous_value': '5.50%',
-                    'forecast': '5.50%',
-                    'actual': '待发布',
-                    'source': 'Federal Reserve'
-                },
-                {
-                    'event_name': 'Eurozone CPI',
-                    'country': 'EU',
-                    'date': (today + timedelta(days=2)).strftime('%Y-%m-%d'),
-                    'time': '10:00 GMT',
-                    'importance': 'high',
-                    'currency_impact': ['EUR', 'EUR/USD'],
-                    'previous_value': '2.4%',
-                    'forecast': '2.3%',
-                    'actual': '待发布',
-                    'source': 'Eurostat'
-                }
-            ]
-            events.extend(default_events)
-        
-        return events
+                # 处理返回的数据
+                if 'data' in data and data['data']:
+                    latest_data = data['data'][0]
+                    event = self._create_economic_event_from_data(latest_data, config)
+                    economic_data_events.append(event)
+                    successful_indicators += 1
+                    
+            except Exception:
+                continue
 
-    # 其他方法保持不变...
-    def analyze_economic_calendar_with_openai(self, news_data: Dict, events_data: Dict, currency_pair: str = None) -> Dict:
-        """使用OpenAI深度分析经济日历"""
+        # 如果没有成功获取到数据，使用回退方案
+        if not economic_data_events:
+            return self._get_historical_economic_data_fallback()
+        
+        # 按日期排序，最新的在前
+        economic_data_events.sort(key=lambda x: x.get('date', ''), reverse=True)
+        
+        return {
+            "events": economic_data_events,
+            "next_event": economic_data_events[0] if economic_data_events else None,
+            "high_impact_count": len([e for e in economic_data_events if e.get("impact") in ["高", "极高"]]),
+            "successful_indicators": successful_indicators,
+            "total_indicators_attempted": len(indicator_configs),
+            "source": "alpha_vantage_historical_data"
+        }
+
+    def _create_economic_event_from_data(self, data_point: Dict, config: Dict) -> Dict:
+        """从API数据创建经济事件对象"""
+        value = data_point.get('value', 'N/A')
+        date = data_point.get('date', 'N/A')
+        
+        # 获取事件的详细解释
+        event_name = config['name_zh']
+        detailed_explanation = self.detailed_event_explanations.get(event_name, {})
+        
+        if not detailed_explanation:
+            detailed_explanation = {
+                "what_is_it": config['description'],
+                "why_it_matters": f"该数据影响{config['currency']}汇率和货币政策预期",
+                "typical_impact": {
+                    "direction": f"数据好于预期利好{config['currency']}，差于预期利空{config['currency']}",
+                    "magnitude": f"{config['impact']}波动性",
+                    "duration": "影响持续数小时至数天"
+                }
+            }
+        
+        return {
+            "name": f"{config['name_zh']}",
+            "date": date,
+            "time": "已发布",
+            "impact": config['impact'],
+            "currency_impact": [config['currency']],
+            "actual_value": value,
+            "status": "已发布",
+            "detailed_explanation": detailed_explanation,
+            "data_source": "Alpha Vantage",
+            "importance": "历史实际数据"
+        }
+
+    def _get_historical_economic_data_fallback(self) -> Dict:
+        """历史经济数据回退方案"""
+        fallback_events = [
+            {
+                "name": "美国消费者物价指数 (CPI)",
+                "date": datetime.now().strftime("%Y-%m-%d"),
+                "time": "已发布",
+                "impact": "高",
+                "currency_impact": ["USD"],
+                "actual_value": "使用API获取最新数据",
+                "status": "需通过API获取",
+                "detailed_explanation": self.detailed_event_explanations.get('US CPI Data', {}),
+                "data_source": "Alpha Vantage (需要有效API密钥)",
+                "importance": "核心通胀指标"
+            }
+        ]
+        
+        return {
+            "events": fallback_events,
+            "next_event": fallback_events[0],
+            "high_impact_count": 1,
+            "successful_indicators": 0,
+            "total_indicators_attempted": 0,
+            "source": "fallback_historical_data"
+        }
+
+    # ==================== 分析处理层 ====================
+    
+    def _get_detailed_trading_advice(self, news_data: Dict, events_data: Dict, currency_pair: str) -> Dict:
+        """获取详细的AI交易建议"""
         if not self.openai_client:
-            return self._get_simplified_analysis(news_data, events_data, currency_pair)
+            return self._get_enhanced_basic_advice(news_data, events_data, currency_pair)
         
         try:
-            # 验证输入数据
-            if not news_data or not events_data:
-                return {
-                    "success": False,
-                    "error": "输入数据为空",
-                    "source": "economic_calendar"
-                }
-            
-            # 确保数据是字典格式
-            if isinstance(news_data, str):
-                try:
-                    import json
-                    news_data = json.loads(news_data)
-                except:
-                    return {
-                        "success": False,
-                        "error": "新闻数据格式错误",
-                        "source": "economic_calendar"
-                    }
-            
-            if isinstance(events_data, str):
-                try:
-                    import json
-                    events_data = json.loads(events_data)
-                except:
-                    return {
-                        "success": False,
-                        "error": "事件数据格式错误",
-                        "source": "economic_calendar"
-                    }
-            
-            prompt = self._build_enhanced_economic_calendar_prompt(news_data, events_data, currency_pair)
+            prompt = self._build_detailed_trading_prompt(news_data, events_data, currency_pair)
             
             response = self.openai_client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
                     {
                         "role": "system",
-                        "content": """你是一个资深的外汇交易策略师和风险管理专家。基于提供的市场新闻、情绪数据和经济事件日程，提供专业的交易分析和具体的风险管理建议。"""
+                        "content": """你是一个资深的外汇交易分析师。请基于提供的市场数据提供详细的交易分析和建议。"""
                     },
                     {
                         "role": "user",
                         "content": prompt
                     }
                 ],
-                max_tokens=1500,
+                max_tokens=1200,
                 temperature=0.3
             )
             
             analysis_text = response.choices[0].message.content.strip()
+            return self._parse_detailed_ai_response(analysis_text, news_data, events_data)
             
-            return {
-                "success": True,
-                'currency_pair': currency_pair,
-                'analysis': analysis_text,
-                'key_events_timeline': self._extract_events_timeline(events_data),
-                'risk_assessment': self._assess_calendar_risk(news_data, events_data),
-                'sentiment_analysis': news_data.get('overall_sentiment', {}),
-                'status': 'openai_analysis'
-            }
-            
-        except Exception as e:
-            print(f"❌ OpenAI深度分析失败: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return {
-                "success": False,
-                "error": f"AI分析失败: {str(e)}",
-                "source": "economic_calendar"
-            }
+        except Exception:
+            return self._get_enhanced_basic_advice(news_data, events_data, currency_pair)
 
-    def _build_enhanced_economic_calendar_prompt(self, news_data: Dict, events_data: Dict, currency_pair: str) -> str:
-        """构建分析提示词"""
-        prompt_parts = []
+    def _build_detailed_trading_prompt(self, news_data: Dict, events_data: Dict, currency_pair: str) -> str:
+        """构建详细交易提示词"""
+        base_cur, quote_cur = currency_pair.split('/')
         
-        prompt_parts.append(f"请分析以下外汇市场信息，重点关注{currency_pair if currency_pair else '主要货币对'}的交易机会：")
-        prompt_parts.append("")
+        prompt = f"请为 {currency_pair} 提供详细的交易分析：\n\n"
         
-        # 新闻数据部分
-        if news_data.get('success'):
-            prompt_parts.append("=== 市场新闻和情绪分析 ===")
-            prompt_parts.append(f"总文章数: {news_data.get('total_articles', 0)}")
-            prompt_parts.append(f"高影响新闻: {news_data.get('high_impact_count', 0)}")
-            
-            sentiment = news_data.get('overall_sentiment', {})
-            prompt_parts.append(f"整体情绪: {sentiment.get('label', 'neutral')} (强度: {sentiment.get('strength', 'weak')})")
-            prompt_parts.append(f"看涨文章: {news_data.get('bullish_count', 0)}")
-            prompt_parts.append(f"看跌文章: {news_data.get('bearish_count', 0)}")
-            
-            # 添加重要新闻标题
-            important_articles = [article for article in news_data.get('articles', []) 
-                                if article.get('importance') == 'high']
-            if important_articles:
-                prompt_parts.append("重要新闻标题:")
-                for article in important_articles[:3]:
-                    prompt_parts.append(f"- {article.get('title', '')}")
-        else:
-            prompt_parts.append("新闻数据获取失败")
+        # 市场情绪分析
+        prompt += "=== 市场情绪分析 ===\n"
+        prompt += f"整体情绪: {news_data.get('sentiment', '中性')}\n"
+        prompt += f"情绪得分: {news_data.get('sentiment_score', 0)}\n"
+        prompt += f"情绪解释: {news_data.get('sentiment_explanation', '')}\n"
+        prompt += f"主要新闻主题: {', '.join(news_data.get('key_themes', []))}\n\n"
         
-        prompt_parts.append("")
+        # 经济事件分析
+        prompt += "=== 经济日历事件 ===\n"
+        events = events_data.get("events", [])
+        for i, event in enumerate(events[:3], 1):
+            prompt += f"{i}. {event['name']} ({event['date']} {event['time']})\n"
+            prompt += f"   影响等级: {event['impact']}\n"
+            prompt += f"   影响货币: {', '.join(event['currency_impact'])}\n"
+            prompt += f"   实际值: {event.get('actual_value', 'N/A')}\n\n"
         
-        # 经济事件部分
-        if events_data.get('success'):
-            prompt_parts.append("=== 经济事件日程 ===")
-            prompt_parts.append(f"总事件数: {events_data.get('total_events', 0)}")
-            prompt_parts.append(f"高影响事件: {events_data.get('high_impact_events', 0)}")
-            
-            high_impact_events = [event for event in events_data.get('events', []) 
-                                if event.get('importance') == 'high']
-            if high_impact_events:
-                prompt_parts.append("高影响事件:")
-                for event in high_impact_events[:5]:
-                    prompt_parts.append(f"- {event.get('event_name', '')} ({event.get('date', '')} {event.get('time', '')})")
+        prompt += f"高影响事件总数: {events_data.get('high_impact_count', 0)}\n\n"
         
-        prompt_parts.append("")
-        prompt_parts.append("请基于以上信息提供：")
-        prompt_parts.append("1. 市场情绪分析和趋势判断")
-        prompt_parts.append("2. 重要经济事件对汇率的影响预测")
-        prompt_parts.append("3. 具体的交易建议和风险管理策略")
-        prompt_parts.append("4. 需要重点关注的风险因素")
+        # 具体分析要求
+        prompt += "=== 分析要求 ===\n"
+        prompt += f"请详细分析以上信息对 {base_cur} 和 {quote_cur} 的影响：\n"
+        prompt += "1. 基于新闻情绪判断市场方向偏好\n"
+        prompt += "2. 分析历史经济数据的潜在影响\n"
+        prompt += "3. 评估风险回报比\n"
+        prompt += "4. 提供具体的交易建议和风险管理策略\n"
         
-        return "\n".join(prompt_parts)
+        return prompt
 
-    def _extract_events_timeline(self, events_data: Dict) -> List[Dict]:
-        """提取事件时间线"""
-        timeline = []
+    # ==================== 输出构建层 ====================
+    
+    def _build_detailed_output(self, news_data: Dict, events_data: Dict, analysis: Dict, currency_pair: str, include_fundamental: bool) -> Dict:
+        """构建详细输出结构"""
+        output = {
+            "success": True,
+            "currency_pair": currency_pair,
+            "analysis_timestamp": datetime.now().isoformat(),
+            "market_context": {
+                "overall_sentiment": news_data.get("sentiment", "中性"),
+                "sentiment_score": news_data.get("sentiment_score", 0),
+                "key_market_themes": news_data.get("key_themes", []),
+                "volatility_outlook": self._get_volatility_outlook(events_data)
+            },
+            "economic_calendar_analysis": {
+                "data_type": "历史经济数据",
+                "period_covered": "最新发布的经济指标",
+                "total_events": len(events_data.get('events', [])),
+                "high_impact_events": events_data.get("high_impact_count", 0),
+                "successful_data_points": events_data.get("successful_indicators", 0),
+                "events": self._build_detailed_events_list(events_data.get("events", []))
+            },
+            "trading_recommendation": {
+                "overall_bias": analysis.get("action", "观望"),
+                "confidence_level": analysis.get("confidence", "中等"),
+                "recommended_actions": self._build_recommended_actions(analysis, currency_pair),
+                "key_risk_factors": analysis.get("risk_factors", []),
+                "preferred_entry_zones": analysis.get("entry_suggestions", []),
+                "critical_levels": self._get_critical_levels(currency_pair)
+            },
+            "data_sources": {
+                "news_source": news_data.get("source", "simulated"),
+                "events_source": events_data.get("source", "simulated"),
+                "api_usage": {
+                    "calls_made": self.api_call_count,
+                    "calls_remaining": self.daily_limit - self.api_call_count
+                }
+            }
+        }
         
-        if events_data.get('success'):
-            events = events_data.get('events', [])
-            for event in events:
-                timeline.append({
-                    'event': event.get('event_name', ''),
-                    'date': event.get('date', ''),
-                    'time': event.get('time', ''),
-                    'importance': event.get('importance', 'medium'),
-                    'currency_impact': event.get('currency_impact', [])
+        # 添加教育性内容
+        if include_fundamental:
+            output["educational_insights"] = self._get_educational_insights(events_data, currency_pair)
+        
+        return output
+
+    def _build_detailed_events_list(self, events: List[Dict]) -> List[Dict]:
+        """构建详细事件列表"""
+        detailed_events = []
+        
+        for event in events:
+            event_name = event.get('name', '')
+            detailed_explanation = self.detailed_event_explanations.get(event_name, {})
+            
+            # 如果没有预定义的详细解释，使用事件中的解释
+            if not detailed_explanation:
+                detailed_explanation = event.get('detailed_explanation', {})
+            
+            detailed_event = {
+                "event_name": event_name,
+                "event_date": event.get('date', ''),
+                "event_time": event.get('time', ''),
+                "country": self._get_country_from_event(event_name),
+                "importance_level": event.get('impact', '中'),
+                "actual_value": event.get('actual_value', 'N/A'),
+                "status": event.get('status', '已发布'),
+                "detailed_explanation": detailed_explanation
+            }
+            detailed_events.append(detailed_event)
+        
+        return detailed_events
+
+    def _build_recommended_actions(self, analysis: Dict, currency_pair: str) -> List[Dict]:
+        """构建推荐操作列表"""
+        actions = []
+        
+        # 短期操作
+        actions.append({
+            "timeframe": "短期(1-3天)",
+            "action": analysis.get("action", "观望"),
+            "rationale": "基于当前市场情绪和经济事件分析",
+            "risk_level": analysis.get("risk", "medium"),
+            "position_sizing": analysis.get("position_size", "标准")
+        })
+        
+        # 事件驱动操作
+        if analysis.get("risk_factors"):
+            actions.append({
+                "timeframe": "事件驱动",
+                "action": "谨慎交易",
+                "rationale": "高影响事件可能引发剧烈波动",
+                "risk_level": "high",
+                "position_sizing": "轻仓"
+            })
+        
+        return actions
+
+    # ==================== 辅助工具层 ====================
+    
+    def _process_enhanced_news(self, news_feed: List, currency_pair: str) -> Dict:
+        """处理增强新闻数据"""
+        if not news_feed:
+            return self._get_enhanced_simulated_sentiment(currency_pair)
+        
+        # 分析新闻情绪和主题
+        scores = []
+        themes = {}
+        important_articles = []
+        
+        for article in news_feed[:10]:
+            # 情绪分析
+            score = article.get('overall_sentiment_score', 0)
+            if score:
+                scores.append(score)
+            
+            # 主题分析
+            title = article.get('title', '').lower()
+            summary = article.get('summary', '').lower()
+            content = title + " " + summary
+            
+            # 检测关键主题
+            detected_themes = self._detect_news_themes(content)
+            for theme in detected_themes:
+                themes[theme] = themes.get(theme, 0) + 1
+            
+            # 重要文章
+            if any(keyword in content for keyword in ['rate', 'inflation', 'employment', 'gdp', 'fed', 'ecb']):
+                important_articles.append({
+                    'title': article.get('title', '')[:100],
+                    'sentiment': article.get('overall_sentiment_label', 'neutral'),
+                    'relevance': article.get('relevance_score', '0')
                 })
         
-        return timeline
-
-    def _analyze_market_sentiment(self, news_data: Dict) -> Dict:
-        """分析市场情绪"""
-        if not news_data.get('success'):
-            return {'overall': 'unknown', 'confidence': 0}
+        # 计算情绪
+        avg_score = sum(scores) / len(scores) if scores else 0
         
-        sentiment = news_data.get('overall_sentiment', {})
-        bullish_count = news_data.get('bullish_count', 0)
-        bearish_count = news_data.get('bearish_count', 0)
-        total_articles = news_data.get('total_articles', 1)
-        
-        bullish_ratio = bullish_count / total_articles
-        bearish_ratio = bearish_count / total_articles
-        
-        if bullish_ratio > 0.6:
-            market_sentiment = 'strongly_bullish'
-        elif bullish_ratio > 0.4:
-            market_sentiment = 'bullish'
-        elif bearish_ratio > 0.6:
-            market_sentiment = 'strongly_bearish'
-        elif bearish_ratio > 0.4:
-            market_sentiment = 'bearish'
+        if avg_score > 0.2:
+            sentiment = "强烈看涨"
+            explanation = "市场情绪积极，多数新闻对经济前景持乐观态度"
+        elif avg_score > 0.05:
+            sentiment = "温和看涨" 
+            explanation = "市场情绪略微积极，但存在不确定性"
+        elif avg_score < -0.2:
+            sentiment = "强烈看跌"
+            explanation = "市场情绪消极，担忧经济前景"
+        elif avg_score < -0.05:
+            sentiment = "温和看跌"
+            explanation = "市场情绪略微消极，存在谨慎情绪"
         else:
-            market_sentiment = 'neutral'
+            sentiment = "中性"
+            explanation = "市场情绪平衡，多空因素交织"
+        
+        # 主要主题
+        key_themes = sorted(themes.items(), key=lambda x: x[1], reverse=True)[:3]
         
         return {
-            'overall': market_sentiment,
-            'confidence': max(bullish_ratio, bearish_ratio),
-            'bullish_articles': bullish_count,
-            'bearish_articles': bearish_count,
-            'sentiment_score': sentiment.get('score', 0)
+            "sentiment": sentiment,
+            "sentiment_score": round(avg_score, 3),
+            "sentiment_explanation": explanation,
+            "key_themes": [theme[0] for theme in key_themes],
+            "important_articles": important_articles[:3],
+            "total_articles": len(news_feed),
+            "source": "alpha_vantage"
         }
 
-    def _get_simplified_analysis(self, news_data: Dict, events_data: Dict, currency_pair: str) -> Dict:
-        """简化分析（当OpenAI不可用时使用）"""
-        sentiment_analysis = self._analyze_market_sentiment(news_data)
+    def _detect_news_themes(self, content: str) -> List[str]:
+        """检测新闻主题"""
+        themes = []
+        content_lower = content.lower()
         
-        # 基于新闻情绪和事件数量生成简单分析
-        if sentiment_analysis['overall'] == 'strongly_bullish':
-            recommendation = "强烈看涨"
-        elif sentiment_analysis['overall'] == 'bullish':
-            recommendation = "看涨"
-        elif sentiment_analysis['overall'] == 'strongly_bearish':
-            recommendation = "强烈看跌"
-        elif sentiment_analysis['overall'] == 'bearish':
-            recommendation = "看跌"
+        theme_keywords = {
+            '货币政策': ['interest rate', 'monetary policy', 'fed', 'ecb', 'central bank', 'rate decision'],
+            '通胀': ['inflation', 'cpi', 'price', 'consumer price'],
+            '就业': ['employment', 'jobs', 'unemployment', 'nonfarm', 'payroll'],
+            '经济增长': ['gdp', 'growth', 'economy', 'economic', 'recession'],
+            '地缘政治': ['geopolitical', 'war', 'conflict', 'sanctions', 'trade'],
+            '市场情绪': ['sentiment', 'confidence', 'optimism', 'pessimism', 'risk appetite']
+        }
+        
+        for theme, keywords in theme_keywords.items():
+            if any(keyword in content_lower for keyword in keywords):
+                themes.append(theme)
+        
+        return themes
+
+    def _get_enhanced_basic_advice(self, news_data: Dict, events_data: Dict, currency_pair: str) -> Dict:
+        """增强的基础建议"""
+        sentiment = news_data.get("sentiment", "中性")
+        high_impact_events = events_data.get("high_impact_count", 0)
+        
+        # 基于情绪和事件的决策逻辑
+        if "看涨" in sentiment and high_impact_events == 0:
+            action, confidence, risk = "做多", "中等", "low"
+        elif "看涨" in sentiment and high_impact_events > 0:
+            action, confidence, risk = "做多", "中等", "medium"
+        elif "看跌" in sentiment and high_impact_events == 0:
+            action, confidence, risk = "做空", "中等", "low"
+        elif "看跌" in sentiment and high_impact_events > 0:
+            action, confidence, risk = "做空", "中等", "medium"
         else:
-            recommendation = "中性"
+            action, confidence, risk = "观望", "低", "low"
         
-        high_impact_events = events_data.get('high_impact_events', 0)
+        return {
+            "action": action,
+            "confidence": confidence,
+            "risk": risk,
+            "timeframe": "短期",
+            "position_size": "轻仓" if risk == "high" else "标准",
+            "reasoning": self._generate_data_based_reasoning(news_data, events_data),
+            "key_factors": self._generate_key_factors(news_data, events_data),
+            "risk_factors": self._generate_risk_factors(events_data),
+            "entry_suggestions": ["等待合适的技术位入场", "设置止损保护"],
+            "summary": self._generate_summary({"action": action, "confidence": confidence, "risk": risk}, 
+                                            news_data, events_data)
+        }
+
+    def _generate_data_based_reasoning(self, news_data: Dict, events_data: Dict) -> List[str]:
+        """基于数据生成分析推理"""
+        reasoning = []
+        sentiment = news_data.get("sentiment", "中性")
+        high_impact_events = events_data.get("high_impact_count", 0)
+        
+        reasoning.append(f"市场情绪分析: {sentiment}，表明市场整体偏向{sentiment.replace('看', '')}方")
+        
         if high_impact_events > 0:
-            recommendation += f"，注意{high_impact_events}个高影响事件"
+            reasoning.append(f"近期有{high_impact_events}个高影响经济事件，可能引发市场波动")
+        
+        key_themes = news_data.get("key_themes", [])
+        if key_themes:
+            reasoning.append(f"新闻主题集中在{', '.join(key_themes)}，这些因素将影响汇率走势")
+        
+        return reasoning
+
+    def _generate_key_factors(self, news_data: Dict, events_data: Dict) -> List[str]:
+        """生成关键影响因素"""
+        factors = []
+        
+        # 基于情绪
+        sentiment = news_data.get("sentiment", "中性")
+        if "看涨" in sentiment:
+            factors.append("积极的市场情绪支撑汇率上行")
+        elif "看跌" in sentiment:
+            factors.append("消极的市场情绪对汇率构成压力")
+        
+        # 基于事件
+        events = events_data.get("events", [])
+        for event in events[:2]:
+            factors.append(f"{event['name']}可能影响{', '.join(event['currency_impact'])}走势")
+        
+        return factors
+
+    def _generate_risk_factors(self, events_data: Dict) -> List[str]:
+        """生成风险因素"""
+        risks = []
+        high_impact_events = events_data.get("high_impact_count", 0)
+        
+        if high_impact_events > 0:
+            risks.append(f"{high_impact_events}个高影响经济事件可能引发市场剧烈波动")
+            risks.append("事件结果的不确定性增加了交易风险")
+        
+        risks.append("全球经济和政治因素可能影响预期走势")
+        risks.append("技术面与基本面可能出现背离")
+        
+        return risks
+
+    def _generate_summary(self, analysis: Dict, news_data: Dict, events_data: Dict) -> str:
+        """生成分析总结"""
+        action = analysis["action"]
+        confidence = analysis["confidence"]
+        risk = analysis["risk"]
+        
+        sentiment = news_data.get("sentiment", "中性")
+        high_impact_events = events_data.get("high_impact_count", 0)
+        
+        summary = f"基于{sentiment}的市场情绪"
+        if high_impact_events > 0:
+            summary += f"和{high_impact_events}个高影响事件"
+        
+        summary += f"，建议{action}操作，置信度{confidence}，风险等级{risk}。"
+        summary += "请根据个人风险承受能力调整仓位。"
+        
+        return summary
+
+    def _get_enhanced_simulated_sentiment(self, currency_pair: str) -> Dict:
+        """增强的模拟情绪数据"""
+        import random
+        sentiments = ["强烈看涨", "温和看涨", "中性", "温和看跌", "强烈看跌"]
+        weights = [0.2, 0.25, 0.3, 0.15, 0.1]  # 略微偏向看涨
+        
+        sentiment = random.choices(sentiments, weights=weights)[0]
+        score = round(random.uniform(-0.5, 0.5), 3)
+        
+        # 根据情绪生成解释
+        explanations = {
+            "强烈看涨": "市场情绪积极，经济数据强劲推动乐观情绪",
+            "温和看涨": "市场略微乐观，但存在一些不确定性", 
+            "中性": "市场情绪平衡，多空因素交织",
+            "温和看跌": "市场略显谨慎，担忧经济前景",
+            "强烈看跌": "市场情绪消极，风险厌恶情绪上升"
+        }
+        
+        themes_pool = ['货币政策', '通胀', '就业', '经济增长', '地缘政治']
+        selected_themes = random.sample(themes_pool, min(3, len(themes_pool)))
         
         return {
-            'currency_pair': currency_pair,
-            'analysis': f"基于市场情绪分析，当前建议：{recommendation}。市场情绪：{sentiment_analysis['overall']}，置信度：{sentiment_analysis['confidence']:.2f}",
-            'recommendation': recommendation,
-            'confidence': sentiment_analysis['confidence'],
-            'status': 'simplified_analysis'
+            "sentiment": sentiment,
+            "sentiment_score": score,
+            "sentiment_explanation": explanations.get(sentiment, "市场情绪中性"),
+            "key_themes": selected_themes,
+            "important_articles": [],
+            "total_articles": random.randint(8, 20),
+            "source": "simulated"
         }
 
-    def _assess_calendar_risk(self, news_data: Dict, events_data: Dict) -> Dict:
-        """评估日历风险"""
-        risk_level = 'low'
-        reasons = []
+    def _get_volatility_outlook(self, events_data: Dict) -> str:
+        """获取波动率展望"""
+        high_impact = events_data.get("high_impact_count", 0)
         
-        # 基于高影响新闻数量评估风险
-        high_impact_news = news_data.get('high_impact_count', 0)
-        if high_impact_news >= 3:
-            risk_level = 'high'
-            reasons.append(f"高影响新闻数量较多: {high_impact_news}")
-        elif high_impact_news >= 1:
-            risk_level = 'medium'
-            reasons.append(f"存在高影响新闻: {high_impact_news}")
+        if high_impact >= 2:
+            return "高波动性预期"
+        elif high_impact == 1:
+            return "中等波动性预期"
+        else:
+            return "低波动性预期"
+
+    def _get_country_from_event(self, event_name: str) -> str:
+        """从事件名称获取国家"""
+        country_map = {
+            'US': '美国',
+            'ECB': '欧元区', 
+            'Fed': '美国',
+            'Bank of England': '英国',
+            'BOJ': '日本',
+            'CPI': '美国',
+            'Nonfarm': '美国'
+        }
         
-        # 基于高影响事件数量评估风险
-        high_impact_events = events_data.get('high_impact_events', 0)
-        if high_impact_events >= 2:
-            risk_level = 'high'
-            reasons.append(f"高影响事件数量较多: {high_impact_events}")
-        elif high_impact_events >= 1 and risk_level != 'high':
-            risk_level = 'medium'
-            reasons.append(f"存在高影响事件: {high_impact_events}")
+        for key, country in country_map.items():
+            if key in event_name:
+                return country
+        return "全球"
+
+    def _get_critical_levels(self, currency_pair: str) -> Dict:
+        """获取关键技术水平（模拟）"""
+        levels = {
+            "EUR/USD": {"support": ["1.0750", "1.0700"], "resistance": ["1.0850", "1.0900"]},
+            "GBP/USD": {"support": ["1.2550", "1.2500"], "resistance": ["1.2650", "1.2700"]},
+            "USD/JPY": {"support": ["148.00", "147.50"], "resistance": ["149.00", "149.50"]},
+            "USD/CHF": {"support": ["0.8800", "0.8750"], "resistance": ["0.8900", "0.8950"]},
+            "AUD/USD": {"support": ["0.6550", "0.6500"], "resistance": ["0.6650", "0.6700"]},
+            "USD/CAD": {"support": ["1.3450", "1.3400"], "resistance": ["1.3550", "1.3600"]},
+            "NZD/USD": {"support": ["0.6050", "0.6000"], "resistance": ["0.6150", "0.6200"]}
+        }
+        
+        return levels.get(currency_pair, {"support": [], "resistance": []})
+
+    def _get_educational_insights(self, events_data: Dict, currency_pair: str) -> Dict:
+        """获取教育性见解"""
+        high_impact_events = events_data.get("high_impact_count", 0)
         
         return {
-            'risk_level': risk_level,
-            'reasons': reasons,
-            'high_impact_news_count': high_impact_news,
-            'high_impact_events_count': high_impact_events
+            "fundamental_concept": "经济数据对汇率的影响机制",
+            "how_to_interpret": "关注数据与预期的偏差，而非绝对值",
+            "common_mistakes": [
+                "在重大数据公布前重仓交易",
+                "忽视数据修正值的重要性",
+                "过度交易低影响力事件"
+            ],
+            "advanced_considerations": [
+                "分析数据趋势而非单次发布",
+                "关注央行政策预期的变化",
+                "结合技术面确认基本面信号"
+            ]
         }
+
+    def _generate_event_specific_advice(self, event_name: str, currency_pair: str) -> Dict:
+        """生成事件特定交易建议"""
+        advice_templates = {
+            'US Nonfarm Payrolls': {
+                'strategy': '突破交易策略',
+                'risk_management': '数据公布后等待5分钟再入场',
+                'key_levels': '关注前期高点和低点'
+            },
+            'US CPI Data': {
+                'strategy': '趋势跟随策略', 
+                'risk_management': '核心CPI数据更重要',
+                'key_levels': '关注通胀预期变化'
+            },
+            'Federal Reserve Meeting': {
+                'strategy': '声明驱动交易',
+                'risk_management': '关注点阵图变化',
+                'key_levels': '技术面与基本面结合'
+            }
+        }
+        
+        return advice_templates.get(event_name, {
+            'strategy': '谨慎交易',
+            'risk_management': '设置合理止损',
+            'key_levels': '关注重要技术水平'
+        })
+
+    def _parse_detailed_ai_response(self, text: str, news_data: Dict, events_data: Dict) -> Dict:
+        """解析详细的AI响应"""
+        lines = text.split('\n')
+        
+        # 初始化默认值
+        analysis = {
+            "action": "观望",
+            "confidence": "中等", 
+            "risk": "medium",
+            "timeframe": "短期",
+            "position_size": "标准",
+            "reasoning": [],
+            "key_factors": [],
+            "risk_factors": [],
+            "entry_suggestions": [],
+            "summary": ""
+        }
+        
+        current_section = None
+        reasoning_lines = []
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            # 检测章节
+            if '交易建议' in line or '建议' in line:
+                current_section = 'action'
+            elif '分析' in line or '推理' in line:
+                current_section = 'reasoning' 
+            elif '因素' in line or '影响' in line:
+                current_section = 'factors'
+            elif '风险' in line:
+                current_section = 'risk'
+            elif '入场' in line or '操作' in line:
+                current_section = 'entry'
+            elif '总结' in line:
+                current_section = 'summary'
+            
+            # 提取交易建议
+            if current_section == 'action':
+                if any(word in line for word in ['做多', '买入', 'long', 'buy']):
+                    analysis["action"] = "做多"
+                elif any(word in line for word in ['做空', '卖出', 'short', 'sell']):
+                    analysis["action"] = "做空"
+                    
+                if '高置信' in line or 'high confidence' in line.lower():
+                    analysis["confidence"] = "高"
+                elif '低置信' in line or 'low confidence' in line.lower():
+                    analysis["confidence"] = "低"
+            
+            # 收集分析推理
+            elif current_section == 'reasoning' and len(line) > 10:
+                reasoning_lines.append(line)
+            
+            # 提取关键因素
+            elif current_section == 'factors' and ('•' in line or '-' in line or '1.' in line):
+                analysis["key_factors"].append(line.strip('•- 123456789.'))
+            
+            # 提取风险因素  
+            elif current_section == 'risk' and len(line) > 5:
+                analysis["risk_factors"].append(line)
+            
+            # 提取入场建议
+            elif current_section == 'entry' and len(line) > 5:
+                analysis["entry_suggestions"].append(line)
+            
+            # 提取总结
+            elif current_section == 'summary' and len(line) > 20 and not analysis["summary"]:
+                analysis["summary"] = line
+        
+        # 处理分析推理
+        if reasoning_lines:
+            analysis["reasoning"] = reasoning_lines[:5]
+        
+        # 如果没有提取到足够信息，使用基于数据的推理
+        if not analysis["reasoning"]:
+            analysis["reasoning"] = self._generate_data_based_reasoning(news_data, events_data)
+        
+        if not analysis["key_factors"]:
+            analysis["key_factors"] = self._generate_key_factors(news_data, events_data)
+            
+        if not analysis["risk_factors"]:
+            analysis["risk_factors"] = self._generate_risk_factors(events_data)
+            
+        if not analysis["summary"]:
+            analysis["summary"] = self._generate_summary(analysis, news_data, events_data)
+        
+        return analysis
+
+    def _is_api_limit_reached(self) -> bool:
+        """检查API限制"""
+        return self.api_call_count >= self.daily_limit

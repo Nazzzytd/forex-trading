@@ -1,0 +1,135 @@
+name: "economic_calendar_optimized_test"
+description: "经济日历优化测试工作流 - 测试新版多货币对分析和详细事件解释功能"
+
+tools:
+  - name: "economic_calendar"
+    server_type: "economic_calendar"
+    parameters:
+      alpha_api_key: "${ALPHA_VANTAGE_API_KEY}"
+      openai_api_key: "${OPENAI_API_KEY}"
+      openai_base_url: "${OPENAI_BASE_URL}"
+      daily_api_limit: 25
+      enable_detailed_explanations: true
+      include_market_expectations: true
+
+workflow:
+  - step: "initial_health_check"
+    tool: "economic_calendar"
+    method: "health_check"
+    store_result_as: "initial_health"
+    description: "检查系统初始状态和API使用情况"
+
+  - step: "test_single_currency_analysis"
+    tool: "economic_calendar"
+    method: "get_trading_analysis"
+    inputs:
+      currency_pair: "EUR/USD"
+      days_ahead: 3
+      include_fundamental_analysis: true
+    store_result_as: "eur_usd_analysis"
+    description: "测试单个货币对(EUR/USD)的完整分析"
+
+  - step: "test_another_currency_analysis"
+    tool: "economic_calendar"
+    method: "get_trading_analysis"
+    inputs:
+      currency_pair: "GBP/USD"
+      days_ahead: 2
+      include_fundamental_analysis: true
+    store_result_as: "gbp_usd_analysis"
+    description: "测试另一个货币对(GBP/USD)的分析"
+
+  - step: "test_multi_currency_analysis"
+    tool: "economic_calendar"
+    method: "get_trading_analysis"
+    inputs:
+      currency_pair: null  # 不指定货币对，触发多货币分析
+      days_ahead: 3
+      include_fundamental_analysis: true
+    store_result_as: "multi_currency_analysis"
+    description: "测试多货币对分析功能"
+
+  - step: "test_jpy_analysis"
+    tool: "economic_calendar"
+    method: "get_trading_analysis"
+    inputs:
+      currency_pair: "USD/JPY"
+      days_ahead: 2
+      include_fundamental_analysis: false  # 测试不包含基本面分析
+    store_result_as: "usd_jpy_analysis"
+    description: "测试USD/JPY分析（不包含教育内容）"
+
+  - step: "test_event_details_cpi"
+    tool: "economic_calendar"
+    method: "get_economic_event_details"
+    inputs:
+      event_name: "US CPI Data"
+      currency_pair: "EUR/USD"
+    store_result_as: "cpi_event_details"
+    description: "测试CPI事件的详细解释"
+
+  - step: "test_event_details_nfp"
+    tool: "economic_calendar"
+    method: "get_economic_event_details"
+    inputs:
+      event_name: "US Nonfarm Payrolls"
+      currency_pair: "GBP/USD"
+    store_result_as: "nfp_event_details"
+    description: "测试非农就业数据的详细解释"
+
+  - step: "test_event_details_fed"
+    tool: "economic_calendar"
+    method: "get_economic_event_details"
+    inputs:
+      event_name: "Federal Reserve Meeting"
+    store_result_as: "fed_event_details"
+    description: "测试美联储会议的详细解释"
+
+  - step: "test_invalid_currency"
+    tool: "economic_calendar"
+    method: "get_trading_analysis"
+    inputs:
+      currency_pair: "BTC/USD"  # 不支持的货币对
+      days_ahead: 2
+    store_result_as: "invalid_currency_test"
+    description: "测试不支持的货币对错误处理"
+
+  - step: "test_invalid_event"
+    tool: "economic_calendar"
+    method: "get_economic_event_details"
+    inputs:
+      event_name: "Invalid Event Name"
+    store_result_as: "invalid_event_test"
+    description: "测试无效事件名称错误处理"
+
+  - step: "test_minimal_analysis"
+    tool: "economic_calendar"
+    method: "get_trading_analysis"
+    inputs:
+      currency_pair: "AUD/USD"
+      days_ahead: 1
+      include_fundamental_analysis: false
+    store_result_as: "aud_usd_minimal"
+    description: "测试最小化分析（不包含教育内容）"
+
+  - step: "test_cad_analysis"
+    tool: "economic_calendar"
+    method: "get_trading_analysis"
+    inputs:
+      currency_pair: "USD/CAD"
+      days_ahead: 3
+      include_fundamental_analysis: true
+    store_result_as: "usd_cad_analysis"
+    description: "测试USD/CAD分析"
+
+  - step: "final_health_check"
+    tool: "economic_calendar"
+    method: "health_check"
+    store_result_as: "final_health"
+    description: "最终健康检查，验证API使用统计"
+
+  - step: "generate_test_summary"
+    tool: "economic_calendar"
+    method: "health_check"
+    store_result_as: "test_summary"
+    description: "生成测试摘要"
