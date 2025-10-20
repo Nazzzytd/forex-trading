@@ -1,0 +1,427 @@
+# 工具定义文件
+name: "economic_calendar"
+description: "经济日历工具 - 提供实时市场新闻、经济数据发布日程和交易分析，支持API限制管理和缓存优化"
+version: "1.2.0"
+
+# 工具类定义
+class:
+  file: "economic_calendar.py"
+  name: "EconomicCalendar"
+
+# 参数定义
+parameters:
+  alpha_api_key:
+    type: "string"
+    description: "Alpha Vantage API密钥 (设置为 'TEST_MODE' 可使用测试模式)"
+    required: false
+    default: "${ALPHA_VANTAGE_API_KEY}"
+    secret: true
+    
+  openai_api_key:
+    type: "string"
+    description: "OpenAI API密钥"
+    required: false
+    default: "${OPENAI_API_KEY}"
+    secret: true
+    
+  openai_base_url:
+    type: "string"
+    description: "OpenAI API BASE URL"
+    default: "${OPENAI_BASE_URL}"
+    
+  # API限制配置
+  daily_api_limit:
+    type: "integer"
+    description: "每日API调用限制次数"
+    default: 25
+    min: 10
+    max: 1000
+    
+  # 数据获取配置
+  news_limit:
+    type: "integer"
+    description: "新闻获取数量限制"
+    default: 20
+    min: 5
+    max: 50
+    
+  max_retry_attempts:
+    type: "integer"
+    description: "最大重试次数"
+    default: 2
+    min: 1
+    max: 3
+    
+  timeout_seconds:
+    type: "integer"
+    description: "请求超时时间（秒）"
+    default: 15
+    min: 5
+    max: 30
+    
+  # 事件分析配置
+  high_impact_threshold:
+    type: "float"
+    description: "高影响事件阈值"
+    default: 0.7
+    min: 0.1
+    max: 1.0
+    
+  sentiment_analysis_enabled:
+    type: "boolean"
+    description: "是否启用情绪分析"
+    default: true
+    
+  volatility_prediction:
+    type: "boolean"
+    description: "是否启用波动率预测"
+    default: true
+    
+  # 缓存配置
+  cache_ttl:
+    type: "integer"
+    description: "缓存生存时间（秒）"
+    default: 300
+    min: 60
+    max: 3600
+    
+  enable_caching:
+    type: "boolean"
+    description: "是否启用缓存机制"
+    default: true
+    
+  # 回退配置
+  enable_simulated_data:
+    type: "boolean"
+    description: "是否启用模拟数据回退"
+    default: true
+    
+  simulated_data_quality:
+    type: "string"
+    description: "模拟数据质量"
+    default: "high"
+    enum: ["low", "medium", "high"]
+    
+  # 测试模式配置
+  test_mode_enabled:
+    type: "boolean"
+    description: "是否启用测试模式（忽略真实API调用）"
+    default: false
+
+# 方法定义
+methods:
+  get_news_sentiment:
+    description: "获取市场新闻和情绪数据（支持缓存和API限制管理）"
+    parameters:
+      topics:
+        type: "string"
+        description: "新闻主题（多个用逗号分隔），支持：blockchain,earnings,ipo,mergers_and_acquisitions,financial_markets,economy_fiscal,economy_monetary,economy_macro,energy_transportation,finance,life_sciences,manufacturing,real_estate,retail_wholesale,technology"
+        required: false
+        default: "economy_monetary,financial_markets"
+      tickers:
+        type: "string"
+        description: "股票代码（多个用逗号分隔），如：EUR,USD,GBP,JPY"
+        required: false
+        default: null
+      limit:
+        type: "integer"
+        description: "新闻数量限制"
+        required: false
+        default: 20
+        min: 5
+        max: 50
+
+  get_forex_specific_news:
+    description: "获取特定货币对的相关外汇新闻和市场情绪"
+    parameters:
+      currency_pair:
+        type: "string"
+        description: "货币对"
+        required: false
+        default: "EUR/USD"
+        enum: ["EUR/USD", "GBP/USD", "USD/JPY", "USD/CHF", "AUD/USD", "USD/CAD", "NZD/USD", "EUR/GBP", "EUR/JPY"]
+      days_back:
+        type: "integer"
+        description: "回溯天数（主要用于模拟数据）"
+        required: false
+        default: 1
+        min: 1
+        max: 7
+        
+  get_economic_events_schedule:
+    description: "获取经济数据发布日程表（支持缓存）"
+    parameters:
+      days_ahead:
+        type: "integer"
+        description: "未来天数"
+        required: false
+        default: 5
+        min: 1
+        max: 14
+      country:
+        type: "string"
+        description: "国家代码过滤"
+        required: false
+        default: null
+        enum: ["us", "eu", "uk", "jp"]
+        
+  get_comprehensive_economic_calendar:
+    description: "获取综合经济日历（新闻 + 经济数据 + AI分析 + API使用统计）"
+    parameters:
+      currency_pair:
+        type: "string"
+        description: "关注的货币对"
+        required: false
+        default: "EUR/USD"
+        enum: ["EUR/USD", "GBP/USD", "USD/JPY", "USD/CHF", "AUD/USD", "USD/CAD", "NZD/USD", "EUR/GBP", "EUR/JPY"]
+      days_ahead:
+        type: "integer"
+        description: "未来天数"
+        required: false
+        default: 3
+        min: 1
+        max: 7
+
+  analyze_economic_calendar_with_openai:
+    description: "使用OpenAI深度分析经济日历"
+    parameters:
+      news_data:
+        type: "object"
+        description: "新闻数据"
+        required: true
+      events_data:
+        type: "object"
+        description: "事件数据"
+        required: true
+      currency_pair:
+        type: "string"
+        description: "货币对"
+        required: false
+        default: null
+        
+  health_check:
+    description: "健康检查 - 显示API使用统计、缓存状态和系统状态"
+    
+  get_calendar_config:
+    description: "获取经济日历工具的当前配置信息，包括API限制和缓存设置"
+
+# 元数据
+metadata:
+  category: "economic_data"
+  tags: ["forex", "economic-calendar", "news", "trading", "ai-analysis", "api-management", "caching"]
+  author: "Forex Trading Agent"
+  dependencies: ["requests", "openai"]
+  features: [
+    "实时市场新闻和情绪分析",
+    "经济数据发布日程", 
+    "AI驱动的交易分析",
+    "API调用限制管理",
+    "智能缓存机制",
+    "模拟数据回退",
+    "多货币对支持",
+    "健康状态监控"
+  ]
+# # 工具定义文件
+# name: "economic_calendar"
+# description: "经济日历工具 - 提供实时市场新闻、经济数据发布日程和交易分析"
+# version: "1.0.0"
+
+# # 工具类定义
+# class:
+#   file: "economic_calendar.py"
+#   name: "EconomicCalendar"
+
+# # 参数定义
+# parameters:
+#   alpha_api_key:
+#     type: "string"
+#     description: "Alpha Vantage API密钥"
+#     required: false
+#     default: "${ALPHA_VANTAGE_API_KEY}" 
+#     secret: true
+    
+#   openai_api_key:
+#     type: "string"
+#     description: "OpenAI API密钥"
+#     required: false
+#     default: "${OPENAI_API_KEY}"
+#     secret: true
+    
+#   openai_base_url:
+#     type: "string"
+#     description: "OpenAI API BASE URL"
+#     default: "${OPENAI_BASE_URL}"
+    
+#   # 数据获取配置
+#   news_limit:
+#     type: "integer"
+#     description: "新闻获取数量限制"
+#     default: 50
+#     min: 10
+#     max: 100
+    
+#   max_retry_attempts:
+#     type: "integer"
+#     description: "最大重试次数"
+#     default: 3
+#     min: 1
+#     max: 5
+    
+#   timeout_seconds:
+#     type: "integer"
+#     description: "请求超时时间（秒）"
+#     default: 15
+#     min: 5
+#     max: 30
+    
+#   # 事件分析配置
+#   high_impact_threshold:
+#     type: "float"
+#     description: "高影响事件阈值"
+#     default: 0.7
+#     min: 0.1
+#     max: 1.0
+    
+#   sentiment_analysis_enabled:
+#     type: "boolean"
+#     description: "是否启用情绪分析"
+#     default: true
+    
+#   volatility_prediction:
+#     type: "boolean"
+#     description: "是否启用波动率预测"
+#     default: true
+    
+#   # 缓存配置
+#   news_cache_ttl:
+#     type: "integer"
+#     description: "新闻缓存TTL（秒）"
+#     default: 300
+#     min: 60
+#     max: 3600
+    
+#   events_cache_ttl:
+#     type: "integer"
+#     description: "事件缓存TTL（秒）"
+#     default: 3600
+#     min: 300
+#     max: 86400
+    
+#   # 回退配置
+#   enable_simulated_data:
+#     type: "boolean"
+#     description: "是否启用模拟数据回退"
+#     default: true
+    
+#   simulated_data_quality:
+#     type: "string"
+#     description: "模拟数据质量"
+#     default: "high"
+#     enum: ["low", "medium", "high"]
+
+
+# # 方法定义
+# methods:
+#   get_news_sentiment:
+#     description: "获取市场新闻和情绪数据"
+#     parameters:
+#       topics:
+#         type: "string"
+#         description: "新闻主题"
+#         required: false
+#         default: null
+#       tickers:
+#         type: "string"
+#         description: "股票代码"
+#         required: false
+#         default: null
+#       limit:
+#         type: "integer"
+#         description: "新闻数量限制"
+#         required: false
+#         default: 50
+#         min: 10
+#         max: 100
+
+#   get_forex_specific_news:
+#     description: "获取特定货币对的相关外汇新闻和市场情绪"
+#     parameters:
+#       currency_pair:
+#         type: "string"
+#         description: "货币对"
+#         required: false
+#         default: null
+#         enum: ["EUR/USD", "GBP/USD", "USD/JPY", "USD/CHF", "AUD/USD", "USD/CAD", "NZD/USD", "EUR/GBP", "EUR/JPY"]
+#       days_back:
+#         type: "integer"
+#         description: "回溯天数"
+#         required: false
+#         default: 1
+#         min: 1
+#         max: 30
+        
+#   get_economic_events_schedule:
+#     description: "获取经济数据发布日程表"
+#     parameters:
+#       days_ahead:
+#         type: "integer"
+#         description: "未来天数"
+#         required: false
+#         default: 7
+#         min: 1
+#         max: 30
+#       country:
+#         type: "string"
+#         description: "国家代码过滤"
+#         required: false
+#         default: null
+#         enum: ["us", "eu", "uk", "jp"]
+        
+#   get_comprehensive_economic_calendar:
+#     description: "获取综合经济日历（新闻 + 经济数据 + AI分析）"
+#     parameters:
+#       currency_pair:
+#         type: "string"
+#         description: "关注的货币对"
+#         required: false
+#         default: null
+#         enum: ["EUR/USD", "GBP/USD", "USD/JPY", "USD/CHF", "AUD/USD", "USD/CAD", "NZD/USD", "EUR/GBP", "EUR/JPY"]
+#       days_ahead:
+#         type: "integer"
+#         description: "未来天数"
+#         required: false
+#         default: 3
+#         min: 1
+#         max: 7
+
+#   analyze_economic_calendar_with_openai:
+#     description: "使用OpenAI深度分析经济日历"
+#     parameters:
+#       news_data:
+#         type: "object"
+#         description: "新闻数据"
+#         required: true
+#       events_data:
+#         type: "object"
+#         description: "事件数据"
+#         required: true
+#       currency_pair:
+#         type: "string"
+#         description: "货币对"
+#         required: false
+#         default: null
+        
+#   health_check:
+#     description: "健康检查"
+    
+#   get_calendar_config:
+#     description: "获取经济日历工具的当前配置信息"
+
+# # 元数据
+# metadata:
+#   category: "economic_data"
+#   tags: ["forex", "economic-calendar", "news", "trading", "ai-analysis"]
+#   author: "Forex Trading Agent"
+#   dependencies: ["requests", "pandas", "openai"]
+
+# 
