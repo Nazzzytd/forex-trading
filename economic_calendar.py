@@ -1,4 +1,4 @@
-# economic_calendar_fixed_v2.py
+# economic_calendar.py
 import requests
 import json
 import openai
@@ -9,7 +9,7 @@ from config import config
 
 class EconomicCalendar:
     """
-    经济日历工具 - 获取外汇新闻和重要经济数据发布信息，并利用OpenAI进行分析
+    经济日历工具 - 利用newapi获取新闻后筛选外汇新闻，获取重要经济数据发布信息，并利用OpenAI进行分析
     """
 
     def __init__(self):

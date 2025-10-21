@@ -1,0 +1,97 @@
+# examples/react_forex_minimal.yaml
+name: "ForexReActMinimal"
+description: "外汇极简ReAct推理"
+
+variables:
+  iteration_count: 0
+  max_iterations: 4
+  collected_data: {}
+
+steps:
+  - step: "react_loop"
+    type: "while"
+    condition: "{{iteration_count < max_iterations and not has_sufficient_data}}"
+    steps:
+      # 推理阶段
+      - step: "reasoning"
+        type: "llm"
+        config:
+          system_prompt: |
+            您是外汇分析师。基于当前信息决定下一步。
+            可用工具: price_data, news_data, economic_data, synthesize
+          prompt: |
+            问题: {{query}}
+            已有数据: {{collected_data}}
+            推理步骤: {{iteration_count}}
+            
+            输出JSON:
+            {
+              "reasoning": "分析思路",
+              "next_action": "price_data|news_data|economic_data|synthesize",
+              "has_sufficient_data": false
+            }
+      
+      # 执行阶段  
+      - step: "execute_action"
+        type: "switch"
+        cases:
+          - case: "{{next_action == 'price_data'}}"
+            steps:
+              - step: "get_price"
+                type: "tool"
+                config:
+                  tool: "price_analyzer"
+                  args:
+                    pair: "USD/JPY"
+                    period: "1d"
+                output: "price_result"
+                
+          - case: "{{next_action == 'news_data'}}"
+            steps:
+              - step: "get_news"
+                type: "tool" 
+                config:
+                  tool: "news_analyzer"
+                  args:
+                    keywords: ["USD/JPY", "美联储", "日央行"]
+                output: "news_result"
+                
+          - case: "{{next_action == 'economic_data'}}"
+            steps:
+              - step: "get_economic"
+                type: "tool"
+                config:
+                  tool: "economic_data"
+                  args:
+                    indicators: ["interest_rate", "inflation"]
+                output: "economic_result"
+          
+          - case: "{{next_action == 'synthesize'}}"
+            steps:
+              - step: "set_final_flag"
+                type: "set_variable"
+                config:
+                  has_sufficient_data: true
+        
+        # 更新数据
+        - step: "update_data"
+          type: "set_variable"
+          config:
+            collected_data: "{{collected_data + tool_output}}"
+        
+        # 更新迭代计数
+        - step: "increment_count"
+          type: "set_variable" 
+          config:
+            iteration_count: "{{iteration_count + 1}}"
+
+  # 最终生成
+  - step: "generate_answer"
+    type: "llm"
+    config:
+      system_prompt: "您是专业外汇分析师，生成最终交易分析报告"
+      prompt: |
+        问题: {{query}}
+        收集的所有数据: {{collected_data}}
+        
+        请给出专业的USD/JPY分析报告。

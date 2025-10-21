@@ -41,9 +41,6 @@ ENV/
 *.log
 logs/
 
-# 向量数据库（可选，如果不想上传大文件）
-chroma_db/
-
 # 系统文件
 .DS_Store
 Thumbs.db
@@ -54,3 +51,19 @@ Thumbs.db
 
 # OCR输出目录（如果有）
 ocr_output/
+
+# ============ 新增的忽略规则 ============
+
+# 忽略特定的服务器配置文件
+servers/data_fetcher/data_fetcher_parameter.yaml
+servers/data_fetcher/data_fetcher_server.yaml
+servers/technical_analyzer/technical_analyzer_parameter.yaml
+servers/technical_analyzer/technical_analyzer_server.yaml
+
+# 或者使用通配符忽略所有服务器的参数文件（推荐）
+servers/*/*_parameter.yaml
+servers/*/*_server.yaml
+
+# 或者更具体的模式
+servers/**/*_parameter.yaml
+servers/**/*_server.yaml
