@@ -1,0 +1,77 @@
+# 工具定义文件
+name: "economic_calendar_optimized_test"
+description: "经济日历优化测试工作流 - 精简版，旨在节约 Alpha Vantage API 调用次数"
+
+tools:
+  - name: "economic_calendar"
+    server_type: "economic_calendar"
+    parameters:
+      alpha_api_key: "${ALPHA_VANTAGE_API_KEY}"
+      openai_api_key: "${OPENAI_API_KEY}"
+      openai_base_url: "${OPENAI_BASE_URL}"
+      daily_api_limit: 25
+      enable_detailed_explanations: true
+      include_market_expectations: true
+
+workflow:
+  - step: "initial_health_check"
+    tool: "economic_calendar"
+    method: "health_check"
+    store_result_as: "initial_health"
+    description: "检查系统初始状态和API使用情况 (预估消耗: 0 次 API 调用)"
+
+  # 关键测试 1：多货币对分析 (最高效的测试方法，覆盖所有主要货币对数据)
+  - step: "test_multi_currency_analysis"
+    tool: "economic_calendar"
+    method: "get_trading_analysis"
+    inputs:
+      currency_pair: null  # 不指定货币对，触发多货币分析
+      days_ahead: 3
+      include_fundamental_analysis: true
+    store_result_as: "multi_currency_analysis"
+    description: "测试多货币对分析功能，一次调用覆盖所有主要数据 (预估消耗: 1 次 API 调用)"
+
+  # 关键测试 2：最小化单货币对分析 (测试不同参数集，例如：仅一天数据，不含教育内容)
+  - step: "test_minimal_analysis"
+    tool: "economic_calendar"
+    method: "get_trading_analysis"
+    inputs:
+      currency_pair: "AUD/USD"
+      days_ahead: 1
+      include_fundamental_analysis: false # 测试不包含基本面分析
+    store_result_as: "aud_usd_minimal"
+    description: "测试最小化单货币对分析，验证 days_ahead 和 include_fundamental_analysis 参数 (预估消耗: 1 次 API 调用)"
+
+  # 关键测试 3：事件详情查询 (测试事件详情获取功能)
+  - step: "test_event_details_fed"
+    tool: "economic_calendar"
+    method: "get_economic_event_details"
+    inputs:
+      event_name: "Federal Reserve Meeting"
+    store_result_as: "fed_event_details"
+    description: "测试美联储会议事件的详细解释 (预估消耗: 1 次 API 调用)"
+    
+  # 错误处理测试 1：无效货币对（不消耗API）
+  - step: "test_invalid_currency"
+    tool: "economic_calendar"
+    method: "get_trading_analysis"
+    inputs:
+      currency_pair: "BTC/USD"  # 不支持的货币对
+      days_ahead: 2
+    store_result_as: "invalid_currency_test"
+    description: "测试不支持的货币对错误处理 (预估消耗: 0 次 API 调用)"
+
+  # 错误处理测试 2：无效事件名称（不消耗API）
+  - step: "test_invalid_event"
+    tool: "economic_calendar"
+    method: "get_economic_event_details"
+    inputs:
+      event_name: "Invalid Event Name"
+    store_result_as: "invalid_event_test"
+    description: "测试无效事件名称错误处理 (预估消耗: 0 次 API 调用)"
+
+  - step: "final_health_check"
+    tool: "economic_calendar"
+    method: "health_check"
+    store_result_as: "final_health"
+    description: "最终健康检查，验证API使用统计，确认只消耗了少量调用 (预估消耗: 0 次 API 调用)"
