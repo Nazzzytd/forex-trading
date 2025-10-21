@@ -498,33 +498,53 @@ class EconomicCalendar:
         try:
             prompt = self._build_detailed_trading_prompt(news_data, events_data, currency_pair)
             
+            # 定义明确的 JSON 响应结构
+            json_schema = {
+                "type": "object",
+                "properties": {
+                    "overall_bias": {"type": "string", "description": "总体交易偏好：'做多'，'做空' 或 '观望'"},
+                    "confidence_level": {"type": "string", "description": "置信度：'高'，'中等' 或 '低'"},
+                    "timeframe": {"type": "string", "description": "推荐时间框架，例如：'短期(1-3天)'"},
+                    "risk_level": {"type": "string", "description": "风险等级：'high'，'medium' 或 'low'"},
+                    "analysis_reasoning": {"type": "array", "items": {"type": "string"}, "description": "详细的分析推理（至少3点）"},
+                    "key_factors": {"type": "array", "items": {"type": "string"}, "description": "关键影响因素（至少3点）"},
+                    "risk_factors": {"type": "array", "items": {"type": "string"}, "description": "主要的风险因素（至少2点）"},
+                    "entry_suggestions": {"type": "array", "items": {"type": "string"}, "description": "建议入场区域或策略"},
+                    "summary": {"type": "string", "description": "基于以上分析的简短总结"}
+                },
+                "required": ["overall_bias", "confidence_level", "analysis_reasoning", "summary"]
+            }
+
             response = self.openai_client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model="gpt-4o-mini", # 推荐使用支持 JSON 模式的较新模型
                 messages=[
                     {
                         "role": "system",
-                        "content": """你是一个资深的外汇交易分析师。请基于提供的市场数据提供详细的交易分析和建议。"""
+                        "content": "你是一个资深的外汇交易分析师。请基于提供的市场数据和经济事件，严格按照指定的 JSON 格式提供详细的交易分析和建议。你的输出必须是符合 JSON Schema 的纯文本，不包含任何 Markdown 或解释性文字。"
                     },
                     {
                         "role": "user",
                         "content": prompt
                     }
                 ],
-                max_tokens=1200,
-                temperature=0.3
+                max_tokens=2000,
+                temperature=0.2,
+                # 开启 JSON 模式
+                response_format={"type": "json_object", "schema": json_schema}
             )
             
             analysis_text = response.choices[0].message.content.strip()
-            return self._parse_detailed_ai_response(analysis_text, news_data, events_data)
+            return self._parse_detailed_ai_response(analysis_text, news_data, events_data, currency_pair)
             
         except Exception:
+            # 异常处理：如果 AI 调用失败或解析 JSON 失败，回退到基础建议
             return self._get_enhanced_basic_advice(news_data, events_data, currency_pair)
 
     def _build_detailed_trading_prompt(self, news_data: Dict, events_data: Dict, currency_pair: str) -> str:
-        """构建详细交易提示词"""
+        """构建详细交易提示词 (添加 JSON 格式要求)"""
         base_cur, quote_cur = currency_pair.split('/')
         
-        prompt = f"请为 {currency_pair} 提供详细的交易分析：\n\n"
+        prompt = f"请为 {currency_pair} 提供详细的交易分析，**严格按照 JSON 格式**输出：\n\n"
         
         # 市场情绪分析
         prompt += "=== 市场情绪分析 ===\n"
@@ -533,24 +553,13 @@ class EconomicCalendar:
         prompt += f"情绪解释: {news_data.get('sentiment_explanation', '')}\n"
         prompt += f"主要新闻主题: {', '.join(news_data.get('key_themes', []))}\n\n"
         
-        # 经济事件分析
-        prompt += "=== 经济日历事件 ===\n"
+        # 经济事件分析 (使用历史数据)
+        prompt += "=== 最新经济数据 (已发布) ===\n"
         events = events_data.get("events", [])
         for i, event in enumerate(events[:3], 1):
-            prompt += f"{i}. {event['name']} ({event['date']} {event['time']})\n"
-            prompt += f"   影响等级: {event['impact']}\n"
-            prompt += f"   影响货币: {', '.join(event['currency_impact'])}\n"
-            prompt += f"   实际值: {event.get('actual_value', 'N/A')}\n\n"
+            prompt += f"{i}. {event['name']} ({event['date']}): 实际值 {event.get('actual_value', 'N/A')}， 影响等级: {event['impact']}\n"
         
-        prompt += f"高影响事件总数: {events_data.get('high_impact_count', 0)}\n\n"
-        
-        # 具体分析要求
-        prompt += "=== 分析要求 ===\n"
-        prompt += f"请详细分析以上信息对 {base_cur} 和 {quote_cur} 的影响：\n"
-        prompt += "1. 基于新闻情绪判断市场方向偏好\n"
-        prompt += "2. 分析历史经济数据的潜在影响\n"
-        prompt += "3. 评估风险回报比\n"
-        prompt += "4. 提供具体的交易建议和风险管理策略\n"
+        prompt += f"\n请根据以上数据，生成一个包含 'overall_bias', 'confidence_level', 'analysis_reasoning', 'key_factors', 'risk_factors', 'entry_suggestions', 'summary' 的 JSON 对象。\n"
         
         return prompt
 
@@ -739,6 +748,7 @@ class EconomicCalendar:
         
         return themes
 
+    # _get_enhanced_basic_advice (修改，确保在回退时调用 _parse_detailed_ai_response 所需的辅助函数)
     def _get_enhanced_basic_advice(self, news_data: Dict, events_data: Dict, currency_pair: str) -> Dict:
         """增强的基础建议"""
         sentiment = news_data.get("sentiment", "中性")
@@ -756,6 +766,12 @@ class EconomicCalendar:
         else:
             action, confidence, risk = "观望", "低", "low"
         
+        analysis_data = {
+            "action": action,
+            "confidence": confidence,
+            "risk": risk,
+        }
+
         return {
             "action": action,
             "confidence": confidence,
@@ -764,12 +780,12 @@ class EconomicCalendar:
             "position_size": "轻仓" if risk == "high" else "标准",
             "reasoning": self._generate_data_based_reasoning(news_data, events_data),
             "key_factors": self._generate_key_factors(news_data, events_data),
-            "risk_factors": self._generate_risk_factors(events_data),
+            "risk_factors": self._generate_risk_factors(events_data), # 确保调用
             "entry_suggestions": ["等待合适的技术位入场", "设置止损保护"],
-            "summary": self._generate_summary({"action": action, "confidence": confidence, "risk": risk}, 
-                                            news_data, events_data)
+            "summary": self._generate_summary(analysis_data, news_data, events_data) # 确保调用
         }
 
+        
     def _generate_data_based_reasoning(self, news_data: Dict, events_data: Dict) -> List[str]:
         """基于数据生成分析推理"""
         reasoning = []
@@ -881,20 +897,25 @@ class EconomicCalendar:
 
     def _get_country_from_event(self, event_name: str) -> str:
         """从事件名称获取国家"""
-        country_map = {
-            'US': '美国',
-            'ECB': '欧元区', 
-            'Fed': '美国',
-            'Bank of England': '英国',
-            'BOJ': '日本',
-            'CPI': '美国',
-            'Nonfarm': '美国'
+        # 使用更具体的关键词
+        country_keywords = {
+            '美国': ['US', 'Nonfarm', 'CPI', 'FOMC', 'Fed', 'ISM', 'PCE'],
+            '欧元区': ['ECB', 'EUR', 'Euro'], 
+            '英国': ['Bank of England', 'BoE', 'GBP', 'UK'],
+            '日本': ['BOJ', 'JPY', 'Japan'],
+            '瑞士': ['CHF'],
+            '加拿大': ['CAD'],
+            '澳大利亚': ['AUD'],
+            '新西兰': ['NZD']
         }
-        
-        for key, country in country_map.items():
-            if key in event_name:
+
+        name_upper = event_name.upper()
+
+        for country, keywords in country_keywords.items():
+            if any(keyword.upper() in name_upper for keyword in keywords):
                 return country
-        return "全球"
+
+        return "全球/未知" # 使用 '未知' 替代 '全球' 更精确
 
     def _get_critical_levels(self, currency_pair: str) -> Dict:
         """获取关键技术水平（模拟）"""
@@ -955,96 +976,47 @@ class EconomicCalendar:
             'key_levels': '关注重要技术水平'
         })
 
-    def _parse_detailed_ai_response(self, text: str, news_data: Dict, events_data: Dict) -> Dict:
-        """解析详细的AI响应"""
-        lines = text.split('\n')
+    def _parse_detailed_ai_response(self, text: str, news_data: Dict, events_data: Dict, currency_pair: str) -> Dict:
+        """
+        解析详细的AI响应。由于启用了 JSON 模式，这里直接解析 JSON 字符串。
+        如果解析失败，则回退到基于数据的推理。
+        """
+        try:
+            # 尝试解析 JSON 字符串
+            ai_data = json.loads(text)
+            
+            # 将 JSON 键映射到期望的输出结构
+            analysis = {
+                "action": ai_data.get("overall_bias", "观望"),
+                "confidence": ai_data.get("confidence_level", "中等"), 
+                "risk": ai_data.get("risk_level", "medium"),
+                "timeframe": ai_data.get("timeframe", "短期"),
+                "position_size": "轻仓" if ai_data.get("risk_level") == "high" else "标准",
+                "reasoning": ai_data.get("analysis_reasoning", []),
+                "key_factors": ai_data.get("key_factors", []),
+                "risk_factors": ai_data.get("risk_factors", []),
+                "entry_suggestions": ai_data.get("entry_suggestions", []),
+                "summary": ai_data.get("summary", "")
+            }
+            
+            # 确保回退机制的风险因素和摘要被覆盖
+            if not analysis["risk_factors"]:
+                 analysis["risk_factors"] = self._generate_risk_factors(events_data)
+            
+            if not analysis["summary"]:
+                # 使用通用摘要函数来确保有输出
+                analysis["summary"] = self._generate_summary(analysis, news_data, events_data) 
+            
+            return analysis
         
-        # 初始化默认值
-        analysis = {
-            "action": "观望",
-            "confidence": "中等", 
-            "risk": "medium",
-            "timeframe": "短期",
-            "position_size": "标准",
-            "reasoning": [],
-            "key_factors": [],
-            "risk_factors": [],
-            "entry_suggestions": [],
-            "summary": ""
-        }
-        
-        current_section = None
-        reasoning_lines = []
-        
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-                
-            # 检测章节
-            if '交易建议' in line or '建议' in line:
-                current_section = 'action'
-            elif '分析' in line or '推理' in line:
-                current_section = 'reasoning' 
-            elif '因素' in line or '影响' in line:
-                current_section = 'factors'
-            elif '风险' in line:
-                current_section = 'risk'
-            elif '入场' in line or '操作' in line:
-                current_section = 'entry'
-            elif '总结' in line:
-                current_section = 'summary'
-            
-            # 提取交易建议
-            if current_section == 'action':
-                if any(word in line for word in ['做多', '买入', 'long', 'buy']):
-                    analysis["action"] = "做多"
-                elif any(word in line for word in ['做空', '卖出', 'short', 'sell']):
-                    analysis["action"] = "做空"
-                    
-                if '高置信' in line or 'high confidence' in line.lower():
-                    analysis["confidence"] = "高"
-                elif '低置信' in line or 'low confidence' in line.lower():
-                    analysis["confidence"] = "低"
-            
-            # 收集分析推理
-            elif current_section == 'reasoning' and len(line) > 10:
-                reasoning_lines.append(line)
-            
-            # 提取关键因素
-            elif current_section == 'factors' and ('•' in line or '-' in line or '1.' in line):
-                analysis["key_factors"].append(line.strip('•- 123456789.'))
-            
-            # 提取风险因素  
-            elif current_section == 'risk' and len(line) > 5:
-                analysis["risk_factors"].append(line)
-            
-            # 提取入场建议
-            elif current_section == 'entry' and len(line) > 5:
-                analysis["entry_suggestions"].append(line)
-            
-            # 提取总结
-            elif current_section == 'summary' and len(line) > 20 and not analysis["summary"]:
-                analysis["summary"] = line
-        
-        # 处理分析推理
-        if reasoning_lines:
-            analysis["reasoning"] = reasoning_lines[:5]
-        
-        # 如果没有提取到足够信息，使用基于数据的推理
-        if not analysis["reasoning"]:
-            analysis["reasoning"] = self._generate_data_based_reasoning(news_data, events_data)
-        
-        if not analysis["key_factors"]:
-            analysis["key_factors"] = self._generate_key_factors(news_data, events_data)
-            
-        if not analysis["risk_factors"]:
-            analysis["risk_factors"] = self._generate_risk_factors(events_data)
-            
-        if not analysis["summary"]:
-            analysis["summary"] = self._generate_summary(analysis, news_data, events_data)
-        
-        return analysis
+        except json.JSONDecodeError as e:
+            # 如果 JSON 解析失败，打印错误并回退到基础建议
+            print(f"JSON 解析失败: {e}. AI 原始输出: {text[:200]}...")
+            return self._get_enhanced_basic_advice(news_data, events_data, currency_pair)
+        except Exception as e:
+            # 其他异常处理
+            print(f"AI 响应处理异常: {e}")
+            return self._get_enhanced_basic_advice(news_data, events_data, currency_pair)
 
     def _is_api_limit_reached(self) -> bool:
         """检查API限制"""

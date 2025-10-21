@@ -94,7 +94,7 @@ methods:
 # 元数据
 metadata:
   category: "economic_data"
-  tags: ["forex", "economic-calendar", "fundamental-analysis", "trading-education", "multi-currency", "ai-analysis"]
+  tags: ["forex", "economic-calendar", "fundamental-analysis", "trading-education", "multi-currency", "ai-analysis", "json-output"] # 添加 json-output 标签
   author: "Forex Trading Agent"
   dependencies: ["requests", "openai"]
   features: [
@@ -102,11 +102,11 @@ metadata:
     "实时新闻情绪分析",
     "历史经济数据获取",
     "详细事件解释框架",
-    "AI驱动的交易建议",
+    "AI驱动的交易建议 (严格 JSON 输出)", # 突出JSON模式
     "基本面分析教育",
     "风险管理指导",
     "API限制管理",
-    "优雅降级机制"
+    "健壮的优雅降级与回退机制" # 突出回退机制
   ]
   supported_currency_pairs: [
     "EUR/USD", "GBP/USD", "USD/JPY", "USD/CHF", 
@@ -122,7 +122,7 @@ metadata:
   data_sources: [
     "Alpha Vantage News Sentiment",
     "Alpha Vantage Economic Indicators",
-    "OpenAI GPT Analysis"
+    "OpenAI GPT Analysis (JSON Schema enforced)" # 突出JSON Schema
   ]
   output_structure: |
     {
