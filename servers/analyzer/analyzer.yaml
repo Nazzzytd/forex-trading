@@ -1,0 +1,200 @@
+# 工具定义文件 - UltraRAG 构建时读取这个文件
+name: "analyzer"
+description: "智能综合分析工具 - 整合市场数据、经济日历和技术分析，生成专业的交易决策报告"
+version: "1.0.0"
+
+# 工具类定义
+class:
+  file: "analyzer.py"
+  name: "Analyzer"
+
+# 参数定义（UltraRAG 根据这个生成 parameter.yaml）
+parameters:
+  openai_api_key:
+    type: "string"
+    description: "OpenAI API密钥"
+    required: false
+    default: "${OPENAI_API_KEY}"
+    secret: true
+    
+  openai_base_url:
+    type: "string"
+    description: "OpenAI API基础URL"
+    required: false
+    default: "${OPENAI_BASE_URL}"
+    
+  default_model:
+    type: "string"
+    description: "默认AI模型"
+    default: "gpt-4"
+    options: ["gpt-4", "gpt-4-turbo", "gpt-3.5-turbo", "gpt-4o", "gpt-4o-mini"]
+
+# 方法定义（UltraRAG 会暴露为 API 端点）
+methods:
+  comprehensive_analysis:
+    description: "综合多数据源深度分析 - 整合市场数据、经济数据和技术分析生成专业交易报告"
+    parameters:
+      market_data:
+        type: "any"
+        description: "市场数据（来自data_fetcher）"
+        required: true
+        example: |
+          {
+            "success": true,
+            "data_type": "realtime",
+            "currency_pair": "USD/JPY",
+            "data": {
+              "exchange_rate": 150.25,
+              "open": 150.10,
+              "high": 150.35,
+              "low": 150.05,
+              "volume": 1000
+            }
+          }
+      economic_data:
+        type: "any"
+        description: "经济日历数据（来自economic_calendar）"
+        required: true
+        example: |
+          {
+            "success": true,
+            "currency_pair": "USD/JPY",
+            "market_context": {
+              "overall_sentiment": "看涨",
+              "sentiment_score": 0.65
+            },
+            "economic_calendar_analysis": {
+              "events": [...]
+            }
+          }
+      technical_data:
+        type: "any"
+        description: "技术分析数据（来自technical_analyzer）"
+        required: true
+        example: |
+          {
+            "success": true,
+            "symbol": "USD/JPY",
+            "composite_signal": {
+              "recommendation": "买入",
+              "confidence": 60.0
+            },
+            "rsi": {"value": 65.2, "signal": "偏多"}
+          }
+      query:
+        type: "string"
+        description: "分析查询问题"
+        default: "分析外汇走势"
+        example: "分析USD/JPY未来一周的走势和交易机会"
+        
+  quick_analysis:
+    description: "快速分析单个数据源"
+    parameters:
+      data:
+        type: "any"
+        description: "输入数据"
+        required: true
+        example: |
+          {
+            "price": 150.25,
+            "trend": "上涨",
+            "volatility": "中等"
+          }
+      analysis_type:
+        type: "string"
+        description: "分析类型"
+        default: "general"
+        options: ["general", "technical", "fundamental", "sentiment", "risk"]
+        
+  health_check:
+    description: "健康检查 - 验证服务状态和AI功能可用性"
+
+# 元数据
+metadata:
+  category: "analysis"
+  tags: ["forex", "comprehensive-analysis", "ai", "trading", "decision-support", "multi-source"]
+  author: "Forex Trading Agent"
+  dependencies: ["openai", "numpy"]
+  features: [
+    "多数据源智能整合",
+    "AI驱动的深度分析",
+    "结构化JSON输出",
+    "自适应数据格式处理",
+    "实时市场分析",
+    "风险管理建议",
+    "交易决策支持"
+  ]
+  supported_data_sources: [
+    "data_fetcher - 市场数据",
+    "economic_calendar - 经济数据", 
+    "technical_analyzer - 技术数据"
+  ]
+  output_structure: |
+    {
+      "success": boolean,
+      "analysis": {
+        "overall_assessment": {
+          "market_sentiment": "看涨/看跌/中性",
+          "confidence_level": "高/中/低", 
+          "key_drivers": [string],
+          "risk_level": "高/中/低"
+        },
+        "price_analysis": {
+          "current_trend": "上升/下降/震荡",
+          "key_support_levels": [string],
+          "key_resistance_levels": [string],
+          "volatility_assessment": "高/中/低"
+        },
+        "fundamental_analysis": {
+          "economic_impact": "重大影响/中等影响/轻微影响",
+          "key_events": [string],
+          "central_bank_bias": "鹰派/鸽派/中性"
+        },
+        "technical_analysis": {
+          "indicators_summary": "技术指标汇总",
+          "signal_strength": "强/中/弱", 
+          "trend_confirmation": "确认/未确认/矛盾"
+        },
+        "trading_recommendation": {
+          "bias": "做多/做空/观望",
+          "entry_zones": [string],
+          "stop_loss": "止损位",
+          "take_profit": [string],
+          "position_sizing": "建议仓位"
+        },
+        "risk_management": {
+          "key_risks": [string],
+          "hedging_suggestions": "对冲建议",
+          "monitoring_points": [string]
+        }
+      },
+      "metadata": {
+        "model_used": string,
+        "query": string,
+        "data_sources_used": [string],
+        "analysis_timestamp": string
+      }
+    }
+  error_structure: |
+    {
+      "success": false,
+      "error": string,
+      "analysis": null
+    }
+  data_processing_capabilities: |
+    - 自动适配 data_fetcher 的实时和历史数据格式
+    - 支持 economic_calendar 的单货币对和多货币对分析
+    - 兼容 technical_analyzer 的技术指标和交易信号输出
+    - 智能数据可用性检查和降级处理
+    - 统一的数据格式标准化
+  usage_examples: |
+    综合外汇分析:
+    - comprehensive_analysis(market_data, economic_data, technical_data, "分析USD/JPY走势")
+    - comprehensive_analysis(market_data, economic_data, technical_data, "为什么今天EUR/USD大涨？")
+    
+    快速分析:
+    - quick_analysis(price_data, "technical")
+    - quick_analysis(news_data, "sentiment")
+    
+    系统检查:
+    - health_check()
