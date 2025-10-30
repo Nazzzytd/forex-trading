@@ -1,7 +1,7 @@
 # 工具定义文件
 name: "technical_analyzer"
 description: "技术分析工具 - 集成多种技术指标计算和AI分析"
-version: "1.0.0"
+version: "1.1.0"
 
 # 工具类定义
 class:
@@ -92,34 +92,50 @@ parameters:
 # 方法定义
 methods:
   calculate_indicators:
-    description: "计算技术指标"
+    description: "计算技术指标 - 支持多种数据格式输入"
     parameters:
       data:
-        type: "list"
-        description: "OHLC数据列表"
+        type: "any"
+        description: "输入数据，支持多种格式：列表、字典、data_fetcher响应格式"
         required: true
         example: |
+          # 支持的数据格式：
+          # 1. 直接OHLC列表
           [
-            {
-              "datetime": "2024-01-01",
-              "open": 1.1000,
-              "high": 1.1050, 
-              "low": 1.0950,
-              "close": 1.1020,
-              "volume": 1000
-            }
+            {"datetime": "2024-01-01", "open": 1.1000, "high": 1.1050, "low": 1.0950, "close": 1.1020, "volume": 1000}
           ]
+          # 2. data_fetcher响应格式
+          {"success": true, "result": {"values": [{"datetime": "2024-01-01", "open": 1.1000, "high": 1.1050, "low": 1.0950, "close": 1.1020}]}}
+          # 3. 实时数据格式
+          {"success": true, "data": {"timestamp": "2024-01-01", "open": 1.1000, "high": 1.1050, "low": 1.0950, "exchange_rate": 1.1020}}
       symbol:
         type: "string"
         description: "交易品种符号"
         default: "UNKNOWN"
+    returns:
+      description: "包含技术指标计算结果的对象"
+      example: |
+        {
+          "success": true,
+          "symbol": "EUR/USD",
+          "data": [...],
+          "indicators_calculated": ["RSI", "MACD", "BB_Upper", ...],
+          "record_count": 50,
+          "latest_timestamp": "2024-01-15T00:00:00",
+          "available_indicators_count": 15,
+          "price_summary": {
+            "current_price": 1.0950,
+            "price_change": -0.0050,
+            "price_change_pct": -0.45
+          }
+        }
         
   generate_signals:
-    description: "生成交易信号"
+    description: "生成交易信号 - 支持AI分析"
     parameters:
       data:
-        type: "list"
-        description: "OHLC数据列表"
+        type: "any"
+        description: "输入数据，支持多种格式：列表、字典、data_fetcher响应格式"
         required: true
       symbol:
         type: "string"
@@ -127,18 +143,89 @@ methods:
         default: "UNKNOWN"
       use_ai:
         type: "boolean"
-        description: "是否使用AI分析"
+        description: "是否使用AI分析生成详细交易建议"
         default: false
+    returns:
+      description: "包含交易信号和AI分析结果的对象"
+      example: |
+        {
+          "success": true,
+          "symbol": "EUR/USD",
+          "timestamp": "2024-01-15T10:30:00",
+          "price": 1.0950,
+          "rsi": {"value": 45.2, "signal": "中性", "strength": 0},
+          "macd": {"signal": "看涨", "crossover": true, "crossover_type": "金叉"},
+          "bollinger_bands": {"signal": "中性", "squeeze": false, "position": 0.52},
+          "stochastic": {"signal": "中性", "k": 55.1, "d": 48.3},
+          "moving_averages": {"signal": "上涨", "strength": "中等", "alignment": "多头排列"},
+          "trend": {"direction": "上涨", "strength": 65.5},
+          "volatility": {"level": "中等波动", "atr": 0.0085},
+          "composite_signal": {
+            "recommendation": "买入",
+            "confidence": 75.5,
+            "bullish_signals": 3,
+            "bearish_signals": 1
+          },
+          "ai_analysis": {
+            "analysis": "详细的市场分析文本...",
+            "timestamp": "2024-01-15T10:30:00",
+            "analysis_type": "comprehensive_technical_analysis"
+          }
+        }
         
   health_check:
-    description: "健康检查"
-    
+    description: "健康检查 - 验证工具功能和AI连接状态"
+    returns:
+      description: "工具健康状态报告"
+      example: |
+        {
+          "success": true,
+          "status": "healthy",
+          "ai_enabled": true,
+          "indicators_working": true,
+          "test_symbol": "TEST",
+          "calculated_indicators": 15,
+          "error": null
+        }
+        
   get_analysis_config:
     description: "获取当前分析配置"
+    returns:
+      description: "当前技术指标配置和功能状态"
+      example: |
+        {
+          "success": true,
+          "indicators_config": {
+            "rsi_period": 14,
+            "macd_fast": 12,
+            "macd_slow": 26,
+            "macd_signal": 9,
+            "bb_period": 20,
+            "bb_std": 2.0,
+            "stoch_k_period": 14,
+            "stoch_d_period": 3,
+            "ema_periods": [5, 10, 20, 50, 200]
+          },
+          "ai_enabled": true,
+          "available_indicators": [
+            "RSI", "MACD", "Bollinger Bands", "Stochastic", 
+            "Moving Averages", "ATR", "Trend Analysis"
+          ]
+        }
 
 # 元数据
 metadata:
   category: "technical_analysis"
-  tags: ["forex", "technical-analysis", "trading", "ai-analysis"]
+  tags: ["forex", "technical-analysis", "trading", "ai-analysis", "data-processing"]
   author: "Forex Trading Agent"
   dependencies: ["talib", "pandas", "numpy", "openai"]
+  data_formats_supported:
+    - "OHLC列表格式"
+    - "data_fetcher响应格式"
+    - "实时数据格式"
+    - "历史数据values格式"
+  features:
+    - "智能数据格式识别"
+    - "多种技术指标计算"
+    - "AI驱动的交易分析"
+    - "实时调试信息输出"

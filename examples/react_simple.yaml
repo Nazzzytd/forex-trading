@@ -1,0 +1,124 @@
+name: "react_interactive_forex_fixed"
+description: "简洁版外汇分析工作流"
+
+tools:
+  - name: "data_fetcher"
+    server_type: "data_fetcher"
+    parameters:
+      api_key: "${TWELVEDATA_API_KEY}"
+
+  - name: "technical_analyzer" 
+    server_type: "technical_analyzer"
+    parameters:
+      openai_api_key: "${OPENAI_API_KEY}"
+      openai_base_url: "${OPENAI_BASE_URL}"
+
+  - name: "economic_calendar"
+    server_type: "economic_calendar"
+    parameters:
+      alpha_api_key: "${ALPHA_VANTAGE_API_KEY}"
+
+workflow:
+  - step: "welcome_message"
+    type: "print"
+    config:
+      message: "🎯 外汇智能分析系统"
+
+  - step: "select_currency_pair"
+    type: "input"
+    config:
+      prompt: "请选择货币对"
+      default: "EUR/USD"
+      type: "choice"
+      choices: ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD"]
+    output: "currency_pair"
+
+  - step: "fetch_market_data"
+    tool: "data_fetcher"
+    method: "fetch_data"
+    inputs:
+      currency_pair: "{{currency_pair}}"
+      data_type: "historical"
+      interval: "1day"
+      output_size: 50
+    store_result_as: "market_data"
+
+  - step: "technical_analysis"
+    tool: "technical_analyzer"
+    method: "generate_signals"
+    inputs:
+      data: "{{market_data}}"
+      symbol: "{{currency_pair}}"
+      use_ai: true
+    store_result_as: "technical_data"
+
+  - step: "economic_analysis"
+    tool: "economic_calendar"
+    method: "get_trading_analysis"
+    inputs:
+      currency_pair: "{{currency_pair}}"
+      days_ahead: 3
+    store_result_as: "economic_data"
+
+  # ========== 简洁版输出 ==========
+  - step: "display_main_analysis"
+    type: "print"
+    config:
+      message: |
+        📈 外汇分析报告
+        ═══════════════
+        
+        💹 货币对: {{currency_pair}}
+        💰 当前价格: {{technical_data.price}}
+        
+        🎯 交易信号: {{technical_data.composite_signal.recommendation}}
+        📊 置信度: {{technical_data.composite_signal.confidence}}%
+        
+        📅 经济事件: {{economic_data.economic_calendar_analysis.total_events}}个
+                   ({{economic_data.economic_calendar_analysis.high_impact_events}}个高影响事件)
+
+  - step: "display_ai_analysis"
+    type: "print"
+    config:
+      message: |
+        🤖 AI深度分析
+        ───────────
+        {{technical_data.ai_analysis}}
+
+  - step: "display_technical_details"
+    type: "print"
+    config:
+      message: |
+        📊 技术指标详情
+        ───────────
+        • RSI: {{technical_data.rsi}} 
+        • MACD: {{technical_data.macd}}
+        • 趋势方向: {{technical_data.trend}}
+        • 波动率: {{technical_data.volatility}}
+        • 布林带: {{technical_data.bollinger_bands}}
+        • 随机指标: {{technical_data.stochastic}}
+
+  - step: "display_economic_context"
+    type: "print"
+    config:
+      message: |
+        📅 市场环境分析
+        ───────────
+        {{economic_data.market_context}}
+        
+        💡 交易建议: {{economic_data.trading_recommendation}}
+
+  - step: "display_final_summary"
+    type: "print"
+    config:
+      message: |
+        📋 最终总结
+        ────────
+        ✅ 分析完成时间: {{technical_data.timestamp}}
+        📈 总体建议: {{technical_data.composite_signal.recommendation}}
+        🎯 操作建议: 根据{{technical_data.composite_signal.confidence}}%置信度{{technical_data.composite_signal.recommendation}}
+
+  - step: "goodbye_message"
+    type: "print"
+    config:
+      message: "👋 分析完成，感谢使用！"

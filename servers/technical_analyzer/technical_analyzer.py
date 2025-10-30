@@ -2,6 +2,7 @@ import talib
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional,Any 
+from datetime import datetime
 import os
 import sys
 
@@ -33,10 +34,11 @@ class TechnicalAnalyzer:
         
         self.ai_enabled = False
         self.openai_client = None
+        self.verbose = config.get("verbose", False)
         
         # 从配置中获取 OpenAI 设置
         openai_api_key = config.get("openai_api_key")
-        openai_base_url = config.get("openai_base_url", "https://api.openai.com/v1")
+        openai_base_url = config.get("openai_base_url")
         
         # 技术指标配置
         self.indicators_config = {
@@ -59,21 +61,28 @@ class TechnicalAnalyzer:
                     base_url=openai_base_url
                 )
                 self.ai_enabled = True
-                print("✅ TechnicalAnalyzer AI功能已启用")
+                if self.verbose: # 检查 verbose
+                    print("✅ TechnicalAnalyzer AI功能已启用")
             except Exception as e:
-                print(f"❌ TechnicalAnalyzer AI初始化失败: {e}")
+                if self.verbose: # 检查 verbose
+                    print(f"❌ TechnicalAnalyzer AI初始化失败: {e}")
         else:
-            print("⚠️ TechnicalAnalyzer AI功能不可用 - 请检查 OPENAI_API_KEY 配置")
+            if self.verbose: # 检查 verbose
+                print("⚠️ TechnicalAnalyzer AI功能不可用 - 请检查 OPENAI_API_KEY 配置")
         
-        print(f"✅ Technical Analyzer 初始化完成")
-        print(f"   AI分析: {'启用' if self.ai_enabled else '禁用'}")
+        if self.verbose: # 检查 verbose
+            print(f"✅ Technical Analyzer 初始化完成")
+            print(f"   AI分析: {'启用' if self.ai_enabled else '禁用'}")
+        
+        
 
     def calculate_indicators(self, data: Any, symbol: str = "UNKNOWN") -> Dict:
         """
         计算技术指标
         """
         try:
-            print(f"🔧 计算技术指标: {symbol}")
+            if self.verbose: # 检查 verbose
+                print(f"🔧 计算技术指标: {symbol}")
             
             # 智能数据提取
             processed_data = self._extract_data_from_response(data)
@@ -155,37 +164,134 @@ class TechnicalAnalyzer:
             }
 
     def _extract_data_from_response(self, data: Any) -> Optional[List[Dict]]:
-        """从各种数据格式中提取OHLC数据"""
+        """从各种数据格式中提取OHLC数据 - 增强版本（抑制冗余输出）"""
         
-        # 如果数据是字符串，尝试解析为JSON
+        def safe_convert_to_float(value):
+            try: return float(value) if value is not None else 0.0
+            except (ValueError, TypeError): return 0.0
+        
+        # 原始数据格式打印被抑制
+        if self.verbose: 
+            print(f"🔍 原始数据格式: {type(data)}")
+        
+        # 增强的字符串解析
         if isinstance(data, str):
-            try:
+            if self.verbose: 
+                print(f"📝 字符串内容前100字符: {data[:100]}...")
+            
+            # 尝试JSON解析
+            try: 
                 import json
                 parsed_data = json.loads(data)
+                if self.verbose: 
+                    print("✅ 成功解析为JSON")
                 return self._extract_data_from_response(parsed_data)
             except json.JSONDecodeError:
-                return None
+                if self.verbose: 
+                    print("❌ JSON解析失败")
+            
+            # 尝试Python字面量解析
+            if data.startswith('{') and data.endswith('}'):
+                try:
+                    import ast
+                    parsed_data = ast.literal_eval(data)
+                    if self.verbose: 
+                        print("✅ 成功使用ast解析")
+                    return self._extract_data_from_response(parsed_data)
+                except:
+                    if self.verbose: 
+                        print("❌ ast解析失败")
+            
+            return None
         
         # 如果已经是数据列表，直接返回
         if isinstance(data, list):
-            return data
+            # 列表数据格式打印被抑制
+            valid_data = []
+            for item in data:
+                if isinstance(item, dict):
+                    # 检查是否包含基本的价格字段
+                    has_price_fields = any(
+                        key in item for key in ['open', 'high', 'low', 'close', 'exchange_rate']
+                    )
+                    if has_price_fields:
+                        valid_data.append(item)
+            return valid_data if valid_data else None
         
-        # 处理 data_fetcher 的完整响应
+        # 处理字典格式的数据
         if isinstance(data, dict):
-            # 情况1: 直接包含 data 字段
-            if 'data' in data and isinstance(data['data'], list):
-                return data['data']
+            # 字典数据格式和键打印被抑制
+            extracted_data = []
             
-            # 情况2: 包含 result.data 结构
-            if 'result' in data and isinstance(data['result'], dict):
-                result = data['result']
-                if 'data' in result and isinstance(result['data'], list):
-                    return result['data']
+            # 情况1: data_fetcher 成功响应格式
+            if data.get('success') and 'result' in data:
+                result_data = data['result']
+                
+                # 情况1.1: 包含 values 字段的历史数据
+                if isinstance(result_data, dict) and 'values' in result_data:
+                    values = result_data['values']
+                    if isinstance(values, list):
+                        for value_item in values:
+                            if isinstance(value_item, dict):
+                                ohlc_item = {
+                                    'datetime': value_item.get('datetime'),
+                                    'open': safe_convert_to_float(value_item.get('open')),
+                                    'high': safe_convert_to_float(value_item.get('high')),
+                                    'low': safe_convert_to_float(value_item.get('low')),
+                                    'close': safe_convert_to_float(value_item.get('close')),
+                                    'volume': safe_convert_to_float(value_item.get('volume', 0))
+                                }
+                                extracted_data.append(ohlc_item)
+                
+                # 情况1.2 & 1.3: 直接是数据列表或包含 data 字段
+                elif isinstance(result_data, list) or (isinstance(result_data, dict) and 'data' in result_data):
+                    nested_data = result_data if isinstance(result_data, list) else result_data.get('data')
+                    if isinstance(nested_data, list):
+                        for data_item in nested_data:
+                            if isinstance(data_item, dict) and any(key in data_item for key in ['open', 'high', 'low', 'close']):
+                                extracted_data.append(data_item)
             
-            # 情况3: 响应本身就是数据字典（单个数据点）
-            if all(key in data for key in ['open', 'high', 'low', 'close']):
-                return [data]
+            # 情况2: 直接包含 data 字段的响应
+            elif 'data' in data and isinstance(data['data'], dict):
+                realtime_data = data['data']
+                # 检查是否包含必要的价格信息
+                if any(key in realtime_data for key in ['open', 'high', 'low', 'exchange_rate']):
+                    ohlc_item = {
+                        'datetime': realtime_data.get('timestamp') or 
+                                realtime_data.get('datetime') or 
+                                datetime.now().isoformat(),
+                        'open': safe_convert_to_float(realtime_data.get('open')),
+                        'high': safe_convert_to_float(realtime_data.get('high')),
+                        'low': safe_convert_to_float(realtime_data.get('low')),
+                        'close': safe_convert_to_float(realtime_data.get('exchange_rate') or realtime_data.get('close')),
+                        'volume': safe_convert_to_float(realtime_data.get('volume', 0))
+                    }
+                    extracted_data.append(ohlc_item)
+            
+            # 情况3: 响应本身就是OHLC数据字典
+            elif all(key in data for key in ['open', 'high', 'low', 'close']):
+                extracted_data.append(data)
+            
+            # 情况4: 尝试从任意字典中提取OHLC字段 (深度搜索)
+            else:
+                # 深度搜索打印被抑制
+                # 扫描字典中可能包含OHLC数据的嵌套结构
+                for key, value in data.items():
+                    if isinstance(value, dict):
+                        nested_result = self._extract_data_from_response(value)
+                        if nested_result:
+                            extracted_data.extend(nested_result)
+                    elif isinstance(value, list) and key in ['data', 'values', 'series', 'quotes']:
+                        for item in value:
+                            if isinstance(item, dict) and any(k in item for k in ['open', 'high', 'low', 'close', 'price']):
+                                extracted_data.append(item)
+            
+            # 提取数据成功打印被抑制
+            return extracted_data if extracted_data else None
         
+        # 无法处理的数据类型打印被抑制
+        if self.verbose: 
+            print(f"❌ 无法处理的数据类型: {type(data)}")
         return None
 
 
@@ -195,7 +301,8 @@ class TechnicalAnalyzer:
         生成交易信号
         """
         try:
-            print(f"📈 开始生成交易信号: {symbol}, 使用AI: {use_ai}")
+            if self.verbose: # 检查 verbose
+                print(f"📈 开始生成交易信号: {symbol}, 使用AI: {use_ai}")
             
             # 先计算技术指标
             indicators_result = self.calculate_indicators(data, symbol)
@@ -667,8 +774,12 @@ class TechnicalAnalyzer:
                 temperature=0.3
             )
             
+            analysis_text = response.choices[0].message.content
+            
+            # 确保返回一个结构化的字典，其中 analysis 键对应的是纯文本/Markdown
             return {
-                "analysis": response.choices[0].message.content,
+                "success": True, # 新增 success 键，方便 Executor 检查
+                "analysis": analysis_text, # 已经是格式良好的 Markdown 文本
                 "timestamp": str(pd.Timestamp.now()),
                 "analysis_type": "comprehensive_technical_analysis"
             }
