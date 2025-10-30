@@ -1,8 +1,9 @@
 import time
 import re
 from typing import Dict, Any, List, Union, Optional
-from .server_manager import ServerManager
+from .server_manager import ServerManager # 假设此模块不会打印
 
+# SimpleMustache 保持最简状态
 class SimpleMustache:
     """简单的 Mustache 模板引擎"""
     
@@ -11,101 +12,68 @@ class SimpleMustache:
         """渲染 Mustache 模板"""
         if not template:
             return template
-            
-        print(f"   🔍 Mustache 渲染模板: '{template}'")  # 调试
-        
-        # 先处理变量，再处理条件块（这样条件块中的变量也能被解析）
         template = SimpleMustache._render_variables(template, context)
         template = SimpleMustache._render_condition_blocks(template, context)
-        
-        print(f"   ✅ Mustache 渲染结果: '{template}'")  # 调试
-        
         return template
     
+    # ... 其他 SimpleMustache 静态方法保持不变 ...
     @staticmethod
     def _render_condition_blocks(template: str, context: Dict) -> str:
-        """处理条件块"""
-        # 使用非贪婪匹配，支持多行
         pattern = r'{{#(.*?)}}(.*?){{/\1}}'
         
         def replace_condition(match):
             condition_key = match.group(1).strip()
             block_content = match.group(2)
-            
-            print(f"   🔍 处理条件块: {condition_key}")  # 调试
-            
-            # 检查条件是否为真
             condition_value = SimpleMustache._get_value(condition_key, context)
             is_truthy = SimpleMustache._is_truthy(condition_value)
-            
-            print(f"   🔍 条件值: {condition_value} -> {is_truthy}")  # 调试
             
             if is_truthy:
                 return block_content
             else:
                 return ""
         
-        # 使用 DOTALL 标志支持多行
         return re.sub(pattern, replace_condition, template, flags=re.DOTALL)
     
     @staticmethod
     def _render_variables(template: str, context: Dict) -> str:
-        """处理变量 - 修复版本"""
         pattern = r'{{(.*?)}}'
         
         def replace_variable(match):
             var_key = match.group(1).strip()
             
-            # 跳过条件块标记
             if var_key.startswith('#') or var_key.startswith('^') or var_key.startswith('/'):
                 return match.group(0)
-            
-            print(f"   🔍 处理变量: {var_key}")  # 调试
             
             value = SimpleMustache._get_value(var_key, context)
             
             if value is not None:
-                result = str(value)
-                print(f"   ✅ 变量解析: {var_key} -> {result}")  # 调试
-                return result
+                return str(value)
             else:
-                print(f"   ⚠️  变量未找到: {var_key}")  # 调试
-                return match.group(0)  # 保持原样
+                return match.group(0)
         
         return re.sub(pattern, replace_variable, template)
     
     @staticmethod
     def _get_value(key: str, context: Dict) -> Any:
-        """从上下文中获取值，支持点符号 - 增强调试"""
         if not key:
             return None
             
-        print(f"   🔍 查找变量路径: '{key}'")  # 调试
-        
-        # 处理 $ 开头的用户输入变量
         if key.startswith('$'):
             key = key[1:]
         
-        # 支持点符号路径
         parts = key.split('.')
         current = context
         
         for i, part in enumerate(parts):
-            print(f"   🔍 查找部分 {i+1}/{len(parts)}: '{part}'")  # 调试
-            
             if isinstance(current, dict) and part in current:
                 current = current[part]
-                print(f"   ✅ 找到: '{part}' -> {type(current).__name__}")  # 调试
             else:
-                print(f"   ❌ 未找到: '{part}'")  # 调试
-                print(f"   📋 当前对象键: {list(current.keys()) if isinstance(current, dict) else '非字典'}")  # 调试
                 return None
         
         return current
     
     @staticmethod
     def _is_truthy(value: Any) -> bool:
-        """检查值是否为真"""
         if value is None:
             return False
         if isinstance(value, bool):
@@ -117,38 +85,35 @@ class SimpleMustache:
         if isinstance(value, (list, dict)):
             return len(value) > 0
         return True
+# --- SimpleMustache 结束 ---
+
 
 class WorkflowExecutor:
-    """工作流执行器 - 增强版支持复杂流水线"""
+    """工作流执行器 - 最终精简输出版"""
     
     def __init__(self, server_manager: ServerManager):
         self.server_manager = server_manager
         self.results = {}
         self.tool_mapping = {}
         self.stored_data = {}
-        self.verbose = True  # 默认详细模式
-        self.branch_states = {}  # 分支状态管理
-        self.loop_counters = {}  # 循环计数器
+        self.verbose = False
+        self.branch_states = {}
+        self.loop_counters = {}
     
     def execute_workflow(self, workflow_config: Dict[str, Any]) -> Dict[str, Any]:
-        """执行工作流 - 增强版支持混合模式和复杂流水线"""
+        """执行工作流 - 仅打印工作流名称"""
         workflow_name = workflow_config.get("name", "未命名工作流")
         interactive_mode = workflow_config.get('_interactive_mode', False)
         provided_params = workflow_config.get('_provided_params', {})
         
-        if self.verbose:
-            print(f"🚀 执行工作流: {workflow_name}")
-            if interactive_mode:
-                print("   🔘 混合模式: 已提供参数将跳过交互输入")
-        else:
-            print(f"📋 {workflow_name}")
+        # 移除外部框架的冗余输出，只保留工作流名称
+        print(f"📋 {workflow_name}")
         
-        # 初始化存储数据，包含工作流变量
         self.stored_data = workflow_config.get("variables", {}).copy()
-        self.branch_states = {}  # 重置分支状态
-        self.loop_counters = {}  # 重置循环计数器
+        self.branch_states = {}
+        self.loop_counters = {}
         
-        # 启动所有工具服务器
+        # 启动工具服务器 (不打印任何信息)
         tools = workflow_config.get("tools", [])
         for tool_config in tools:
             self._start_tool_server(tool_config)
@@ -157,14 +122,14 @@ class WorkflowExecutor:
         steps = workflow_config.get("workflow", [])
         result = self._execute_steps(steps, interactive_mode, provided_params)
         
-        if self.verbose:
-            print(f"✅ 工作流执行完成")
+        # 移除工作流执行完成的提示
+        # if self.verbose: print(f"✅ 工作流执行完成") 
         
         return self.results
 
     def _execute_steps(self, steps: List[Dict[str, Any]], interactive_mode: bool = False, 
                      provided_params: Dict = None, context: Dict = None) -> Any:
-        """执行步骤序列 - 支持复杂流水线"""
+        """执行步骤序列"""
         context = context or {}
         result = None
         
@@ -177,16 +142,17 @@ class WorkflowExecutor:
 
     def _execute_step(self, step: Dict[str, Any], interactive_mode: bool = False, 
                     provided_params: Dict = None, context: Dict = None) -> Any:
-        """执行单个步骤 - 增强版支持复杂流水线"""
+        """执行单个步骤 - 精简步骤名称输出"""
         context = context or {}
         step_name = step.get("step", "未知步骤")
         step_type = step.get("type", "tool")
         
-        if self.verbose:
-            print(f"\n🔹 {step_name}")
+        # 仅输出步骤名称，不换行，末尾留一个空格
+        print(f"🔹 {step_name}", end=" ")
         
         try:
             if step_type == "print":
+                # 打印步骤的输出会换行，所以此处不需再打印
                 return self._execute_print_step(step, context)
             elif step_type == "tool":
                 return self._execute_tool_step(step, context)
@@ -203,40 +169,25 @@ class WorkflowExecutor:
             else:
                 error_msg = f"未知的步骤类型: {step_type}"
                 self.results[step_name] = {"success": False, "error": error_msg}
-                if self.verbose:
-                    print(f"   ❌ {error_msg}")
-                else:
-                    print(f"❌ {step_name}: {error_msg}")
+                print(f"❌ {error_msg}")
                 return None
         except Exception as e:
             error_msg = f"步骤执行失败: {str(e)}"
             self.results[step_name] = {"success": False, "error": error_msg}
-            print(f"❌ {step_name}: {error_msg}")
+            print(f"❌ {error_msg}")
             return None
 
     # ========== 打印步骤 ==========
     def _execute_print_step(self, step: Dict[str, Any], context: Dict = None) -> Any:
-        """执行打印步骤 - 支持完整的 Mustache 语法"""
+        """执行打印步骤 - 最终输出"""
         try:
             config = step.get("config", {})
             message = config.get("message", "")
-            
-            # 构建完整的上下文
             full_context = self._build_full_context(context)
-            
-            if self.verbose:
-                print(f"   📝 渲染消息模板")
-                print(f"   🔍 原始消息: {message}")
-                print(f"   📋 可用上下文: {list(full_context.keys())}")
-            
-            # 使用 Mustache 渲染模板
             resolved_message = SimpleMustache.render(message, full_context)
             
-            if self.verbose and message != resolved_message:
-                print(f"   ✅ 渲染后消息: {resolved_message}")
-            
-            # 输出消息
-            print(resolved_message)
+            # 打印消息，这里会换行，步骤名称的 "🔹 step_name " 会被后续的打印结果覆盖
+            print(f"\r{resolved_message}") 
             
             result = {"success": True, "result": resolved_message}
             self.results[step.get("step", "print_step")] = result
@@ -253,83 +204,58 @@ class WorkflowExecutor:
     # ========== 输入步骤 ==========
     def _execute_input_step(self, step: Dict[str, Any], interactive_mode: bool = False,
                           provided_params: Dict = None, context: Dict = None) -> Any:
-        """执行输入步骤 - 修复变量存储问题"""
+        """执行输入步骤 - 确保提示符简洁且输入在一行"""
         try:
             config = step.get("config", {})
             prompt = config.get("prompt", "请输入:")
-            var_name = step.get("output")  # 获取输出变量名
+            var_name = step.get("output")
             default_value = config.get("default", "")
             
             if not var_name:
                 error_msg = "输入步骤缺少 output 字段"
-                self.results[step.get("step", "input_step")] = {
-                    "success": False,
-                    "error": error_msg
-                }
+                self.results[step.get("step", "input_step")] = {"success": False, "error": error_msg}
                 print(f"❌ {error_msg}")
                 return None
             
-            # 获取用户输入
             full_prompt = prompt
             if default_value:
                 full_prompt += f" [默认: {default_value}]"
-            full_prompt += ": "
             
-            user_input = input(f"   {full_prompt}").strip()
+            # 使用回车符 \r 覆盖前面的 "🔹 select_currency_pair "
+            user_input = input(f"\r{full_prompt}: ").strip()
             
-            # 如果用户没有输入，使用默认值
             if not user_input and default_value:
                 user_input = default_value
-                if self.verbose:
-                    print(f"   💡 使用默认值: {default_value}")
             
-            # 验证输入
             is_valid, validated_value, error_msg = self._validate_input(user_input, config)
             
             if is_valid:
-                # 存储用户输入到 stored_data
                 stored_value = validated_value if validated_value is not None else user_input
                 self.stored_data[var_name] = stored_value
+                self.results[step.get("step", "input_step")] = {"success": True, "result": stored_value}
                 
-                # 同时存储到 results
-                self.results[step.get("step", "input_step")] = {
-                    "success": True, 
-                    "result": stored_value
-                }
-                
-                if self.verbose:
-                    print(f"   ✅ 输入已保存到 stored_data: {var_name} = {stored_value}")
-                    print(f"   📋 当前 stored_data 键: {list(self.stored_data.keys())}")
+                print(f"✅ (已保存到: {var_name})") 
                 
                 return stored_value
             else:
                 error_msg = f"输入验证失败: {error_msg}"
-                self.results[step.get("step", "input_step")] = {
-                    "success": False,
-                    "error": error_msg
-                }
-                print(f"   ❌ {error_msg}")
+                self.results[step.get("step", "input_step")] = {"success": False, "error": error_msg}
+                print(f"❌ {error_msg}")
                 return None
                 
         except KeyboardInterrupt:
             print("\n⚠️  用户取消输入")
-            self.results[step.get("step", "input_step")] = {
-                "success": False,
-                "error": "用户取消输入"
-            }
+            self.results[step.get("step", "input_step")] = {"success": False, "error": "用户取消输入"}
             raise
         except Exception as e:
             error_msg = f"输入步骤失败: {str(e)}"
-            self.results[step.get("step", "input_step")] = {
-                "success": False,
-                "error": error_msg
-            }
+            self.results[step.get("step", "input_step")] = {"success": False, "error": error_msg}
             print(f"❌ {error_msg}")
             return None
 
     # ========== 工具步骤 ==========
     def _execute_tool_step(self, step: Dict[str, Any], context: Dict = None) -> Any:
-        """执行工具步骤 - 修复变量解析"""
+        """执行工具步骤 - 关键修改以应对工具内部输出"""
         step_name = step.get("step", "未知步骤")
         tool_name = step.get("tool")
         inputs = step.get("inputs", {})
@@ -337,148 +263,83 @@ class WorkflowExecutor:
         
         store_var = step.get("store_result_as") or step.get("output")
         
-        if self.verbose:
-            print(f"   🔧 执行工具步骤: {step_name}")
-            print(f"   📦 存储变量: {store_var}")
-            print(f"   🔍 原始输入: {inputs}")
-            print(f"   📋 当前 stored_data 键: {list(self.stored_data.keys())}")
-    
         if tool_name not in self.tool_mapping:
             error_msg = f"工具未找到: {tool_name}"
             self.results[step_name] = {"success": False, "error": error_msg}
-            print(f"❌ {error_msg}")
+            print(f"❌ 工具未找到: {tool_name}")
             return None
         
         server_type = self.tool_mapping[tool_name]
         
         try:
-            # 构建完整上下文
             full_context = self._build_full_context(context)
-            
-            # 处理输入数据中的变量引用
             resolved_inputs = self._resolve_inputs_with_mustache(inputs, full_context)
             
-            if self.verbose:
-                print(f"   ✅ 解析后输入: {resolved_inputs}")
+            # 在调用工具之前，先打印一个空的回车，用于覆盖步骤名称
+            # 这一步是为了防止工具内部打印的调试信息污染步骤名称行
+            print(f"\r{step_name}...", end="") 
             
+            # *** WARNING: 此处调用的 result.get("success", False) 之前的输出
+            # *** 都是由外部工具模块（technical_analyzer/data_fetcher）打印的，
+            # *** 无法在 WorkflowExecutor 级别删除。
             result = self.server_manager.call_tool_method(server_type, method, **resolved_inputs)
             
-            # 存储结果
             self.results[step_name] = {"success": True, "result": result}
             
             if store_var:
                 self.stored_data[store_var] = result
-                if self.verbose:
-                    print(f"   💾 存储到 stored_data['{store_var}']")
             
             self.stored_data[step_name] = result
             
             if result.get("success", False):
-                if self.verbose:
-                    print(f"   ✅ 成功")
-                    self._display_detailed_data(result)
+                # 打印成功提示，并换行
+                print(f"✅ ({tool_name}: {method})", end="")
+                if store_var:
+                    print(f" (已保存到: {store_var})")
                 else:
-                    print(" ✅")
+                    print("")
+                
+                # 尝试再次精简 summary data 的打印（如果存在的话）
+                self._display_summary_data(result)
+
             else:
-                if not self.verbose:
-                    print(" ❌")
+                # 失败时打印错误信息
+                print("❌")
                 error_msg = result.get("error", "未知错误")
                 self.results[step_name] = {"success": False, "error": error_msg}
-                print(f"   ❌ 失败: {error_msg}")
+                print(f"❌ {tool_name} 失败: {error_msg}")
             
             return result
             
         except Exception as e:
-            if not self.verbose:
-                print(" ❌")
+            print("❌")
             error_msg = str(e) if e else "未知异常"
             self.results[step_name] = {"success": False, "error": error_msg}
-            print(f"   ❌ 异常: {error_msg}")
+            print(f"❌ 异常: {error_msg}")
             return None
+        finally:
+            # 无论成功失败，确保换行，并准备下一个步骤的输出
+            if not result or not result.get("success", False):
+                print("") # 确保失败时也换行
 
-    def _resolve_inputs_with_mustache(self, inputs: Dict[str, Any], context: Dict) -> Dict[str, Any]:
-        """使用 Mustache 解析输入数据中的变量引用 - 增强版支持对象引用"""
-        resolved = {}
-        
-        if self.verbose:
-            print(f"   🔍 开始解析输入:")
-            print(f"   📋 可用上下文键: {list(context.keys())}")
-        
-        for key, value in inputs.items():
-            if isinstance(value, str) and ("{{" in value or "}}" in value):
-                if self.verbose:
-                    print(f"   🔍 解析输入 {key}: {value}")
-                
-                # 检查是否是纯变量引用（没有其他文本）
-                pure_var_match = re.match(r'^{{(.*)}}$', value.strip())
-                if pure_var_match:
-                    # 纯变量引用，直接获取对象
-                    var_path = pure_var_match.group(1).strip()
-                    resolved_value = SimpleMustache._get_value(var_path, context)
-                    if resolved_value is not None:
-                        resolved[key] = resolved_value
-                        if self.verbose:
-                            print(f"   ✅ 纯变量引用: {key} = '{value}' -> {type(resolved_value).__name__}")
-                    else:
-                        # 变量未找到，保持原样
-                        resolved[key] = value
-                        if self.verbose:
-                            print(f"   ⚠️  变量未找到: {key} = '{value}'")
-                else:
-                    # 混合文本，使用 Mustache 渲染
-                    resolved_value = SimpleMustache.render(value, context)
-                    resolved[key] = resolved_value
-                    if self.verbose:
-                        if value != resolved_value:
-                            print(f"   ✅ 模板渲染: {key} = '{value}' -> '{resolved_value}'")
-                        else:
-                            print(f"   ⚠️  渲染失败，保持原样: {key} = '{value}'")
-            else:
-                resolved[key] = value
-        
-        return resolved
+    # --- 其他方法保持不变或仅做轻微调整 ---
 
-    def _build_full_context(self, context: Dict = None) -> Dict[str, Any]:
-        """构建完整的上下文，包含所有可用数据"""
-        full_context = {}
+    def _start_tool_server(self, tool_config: Dict[str, Any]):
+        """启动工具服务器 - 仅调用，不打印任何信息"""
+        tool_name = tool_config["name"]
+        server_type = tool_config["server_type"]
+        self.tool_mapping[tool_name] = server_type
         
-        # 添加存储的数据（优先级最高）
-        full_context.update(self.stored_data)
-        
-        # 添加步骤结果
-        for key, value in self.results.items():
-            if isinstance(value, dict) and 'result' in value:
-                # 展开 result 字段
-                full_context[key] = value['result']
-            else:
-                full_context[key] = value
-        
-        # 添加上下文
-        if context:
-            full_context.update(context)
-        
-        # 添加特殊访问器
-        full_context.update({
-            'stored_data': self.stored_data,
-            'results': self.results
-        })
-        
-        if self.verbose:
-            print(f"   📋 完整上下文构建完成:")
-            print(f"   🔑 存储数据: {list(self.stored_data.keys())}")
-            print(f"   🔑 步骤结果: {list(self.results.keys())}")
-            for key in ['technical_data', 'economic_data', 'currency_pair']:
-                if key in full_context:
-                    print(f"   💡 {key}: {type(full_context[key]).__name__}")
-        
-        return full_context
+        server_config = {
+            "server_type": server_type,
+            "parameters": tool_config.get("parameters", {})
+        }
+        self.server_manager.start_server(server_type, server_config)
 
-    # ========== 其他步骤类型（简化版） ==========
     def _execute_set_variable_step(self, step: Dict[str, Any], context: Dict = None) -> Any:
         """执行设置变量步骤"""
         step_name = step.get("step", "set_variable_step")
         config = step.get("config", {})
-        
         var_name = config.get("variable")
         value = config.get("value")
         
@@ -488,79 +349,99 @@ class WorkflowExecutor:
             print(f"❌ {error_msg}")
             return None
         
-        # 解析值中的变量引用
         full_context = self._build_full_context(context)
         resolved_value = SimpleMustache.render(str(value), full_context) if isinstance(value, str) else value
-        
-        # 存储变量
         self.stored_data[var_name] = resolved_value
         
-        if self.verbose:
-            print(f"   💾 设置变量: {var_name} = {resolved_value}")
+        print(f"✅ (已保存到: {var_name})")
         
         result = {"success": True, "result": resolved_value}
         self.results[step_name] = result
         return result
 
-    # ========== 复杂流水线功能（简化版） ==========
+    def _display_summary_data(self, result: Dict[str, Any]):
+        """在非 verbose 模式下，仅显示关键结果的总结"""
+        data_type = result.get("data_type")
+        
+        if data_type == "realtime" and "data" in result:
+            data = result["data"]
+            currency_pair = result.get("symbol", result.get("currency_pair", "未知"))
+            rate = data.get("exchange_rate")
+            change = data.get("percent_change")
+
+            if rate is not None and change is not None:
+                # 打印到新行，并精简信息
+                print(f"   [结果] 💹 {currency_pair} | 汇率: {rate:.4f} | 涨跌: {change:+.2f}%")
+        elif 'analysis' in result and isinstance(result['analysis'], str):
+            # 对于分析工具，不打印任何额外的详细数据，让后续的 print 步骤来处理
+            pass
+        else:
+            # 默认不打印，保持简洁
+            pass
+
+    # ... 其他辅助方法保持不变 ...
+    def _resolve_inputs_with_mustache(self, inputs: Dict[str, Any], context: Dict) -> Dict[str, Any]:
+        # ... (保持不变) ...
+        resolved = {}
+        for key, value in inputs.items():
+            if isinstance(value, str) and ("{{" in value or "}}" in value):
+                pure_var_match = re.match(r'^{{(.*)}}$', value.strip())
+                if pure_var_match:
+                    var_path = pure_var_match.group(1).strip()
+                    resolved_value = SimpleMustache._get_value(var_path, context)
+                    if resolved_value is not None:
+                        resolved[key] = resolved_value
+                    else:
+                        resolved[key] = value
+                else:
+                    resolved_value = SimpleMustache.render(value, context)
+                    resolved[key] = resolved_value
+            else:
+                resolved[key] = value
+        return resolved
+
+    def _build_full_context(self, context: Dict = None) -> Dict[str, Any]:
+        # ... (保持不变) ...
+        full_context = {}
+        full_context.update(self.stored_data)
+        for key, value in self.results.items():
+            if isinstance(value, dict) and 'result' in value:
+                full_context[key] = value['result']
+            else:
+                full_context[key] = value
+        if context:
+            full_context.update(context)
+        full_context.update({'stored_data': self.stored_data, 'results': self.results})
+        return full_context
+
+    # ... 其他执行/验证/工具方法保持不变 ...
     def _execute_loop_step(self, step: Dict[str, Any], interactive_mode: bool = False,
                          provided_params: Dict = None, context: Dict = None) -> Any:
-        """执行循环步骤"""
-        # 简化实现 - 先保证基本功能
         step_name = step.get("step", "loop_step")
         config = step.get("config", {})
         times = config.get("times", 1)
         loop_steps = config.get("steps", [])
-        
-        if self.verbose:
-            print(f"   🔄 开始循环: {times} 次")
-        
+        print(f"🔄 循环 {times} 次...")
         final_result = None
         for i in range(times):
-            if self.verbose:
-                print(f"   🔄 循环迭代 {i+1}/{times}")
             result = self._execute_steps(loop_steps, interactive_mode, provided_params, context)
             if result is not None:
                 final_result = result
-        
+        print("✅ 循环结束")
         return final_result
 
     def _execute_branch_step(self, step: Dict[str, Any], interactive_mode: bool = False,
                            provided_params: Dict = None, context: Dict = None) -> Any:
-        """执行分支步骤"""
-        # 简化实现
-        step_name = step.get("step", "branch_step")
-        if self.verbose:
-            print(f"   🚦 分支步骤: {step_name}")
+        print("🚦 分支步骤 (未执行)")
         return None
 
     def _execute_router_step(self, step: Dict[str, Any], interactive_mode: bool = False,
                            provided_params: Dict = None, context: Dict = None) -> Any:
-        """执行路由器步骤"""
-        # 简化实现
-        step_name = step.get("step", "router_step")
-        if self.verbose:
-            print(f"   🎯 路由器步骤: {step_name}")
+        print("🎯 路由器步骤 (未执行)")
         return None
 
-    # ========== 其他现有方法保持不变 ==========
-    def _start_tool_server(self, tool_config: Dict[str, Any]):
-        """启动工具服务器"""
-        tool_name = tool_config["name"]
-        server_type = tool_config["server_type"]
-        self.tool_mapping[tool_name] = server_type
-        
-        if self.verbose:
-            server_config = {
-                "server_type": server_type,
-                "parameters": tool_config.get("parameters", {})
-            }
-            self.server_manager.start_server(server_type, server_config)
-            print(f"   ✅ 启动工具服务器: {tool_name}")
-
     def _validate_input(self, value: str, config: Dict) -> tuple[bool, Any, str]:
-        """验证用户输入"""
-        # 保持原有实现
+        # ... (保持不变) ...
         input_type = config.get("type", "string")
         required = config.get("required", False)
         
@@ -617,25 +498,3 @@ class WorkflowExecutor:
                 
         except ValueError as e:
             return False, None, f"输入格式错误: {str(e)}"
-
-    def _display_detailed_data(self, result: Dict[str, Any]):
-        """显示详细数据"""
-        # 保持原有实现
-        data_type = result.get("data_type")
-        currency_pair = result.get("symbol", result.get("currency_pair", "未知"))
-        
-        if data_type == "realtime" and "data" in result:
-            data = result["data"]
-            rate = data.get("exchange_rate", 0)
-            change = data.get("percent_change", 0)
-            high = data.get("high", 0)
-            low = data.get("low", 0)
-            volume = data.get("volume", 0)
-            
-            print(f"     💹 {currency_pair}")
-            print(f"       汇率: {rate:.4f}")
-            print(f"       涨跌: {change:+.2f}%")
-            print(f"       最高: {high:.4f} | 最低: {low:.4f}")
-            print(f"       交易量: {volume:,}")
-            if data.get('timestamp'):
-                print(f"       时间: {data['timestamp']}")
