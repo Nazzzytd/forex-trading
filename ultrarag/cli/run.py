@@ -20,7 +20,7 @@ class RunCommand:
             print(f"❌ 工作流文件不存在: {workflow_file}")
             return
         
-        # 简洁模式：只在详细模式下显示完整信息
+        # 简洁模式：只在详细模式下显示完整信息 (删除冗余的 '▶️ 执行' 提示)
         if verbose:
             print(f"🚀 运行工作流: {workflow_path.name}")
             if interactive:
@@ -30,21 +30,18 @@ class RunCommand:
             else:
                 print("🔘 模式: 纯交互式模式")
         else:
-            mode_indicator = ""
-            if interactive:
-                mode_indicator = " [混合模式]"
-            elif user_params:
-                mode_indicator = " [参数模式]"
-            print(f"▶️  执行: {workflow_path.stem}{mode_indicator}")
+            # 简洁模式下，删除所有 CLI 运行提示
+            pass 
         
         # 加载工作流配置
         workflow_config = self.config_loader.load_config(workflow_path)
         
-        # 初始化框架组件
-        tool_registry = ToolRegistry()
-        server_manager = ServerManager(tool_registry)
+        # 初始化框架组件 (新增：传递 verbose 参数)
+        tool_registry = ToolRegistry(verbose=verbose) 
+        server_manager = ServerManager(tool_registry, verbose=verbose)
         
         # 注册工作流中的工具
+        # 在 _register_tools 中，将 verbose 传递给 server_manager.start_server
         self._register_tools(workflow_config, tool_registry, server_manager, verbose)
         
         # 注入用户参数到工作流配置中
@@ -83,7 +80,7 @@ class RunCommand:
     
     def _register_tools(self, workflow_config: Dict, registry: ToolRegistry, 
                        server_manager: ServerManager, verbose: bool):
-        """注册工作流中的工具"""
+        """注册工作流中的工具 (关键修改：传递 verbose 到 start_server，删除冗余的注册信息)"""
         tools = workflow_config.get("tools", [])
         
         for tool_config in tools:
@@ -96,6 +93,8 @@ class RunCommand:
             if tool_def_path.exists():
                 try:
                     tool_def = self.config_loader.load_config(tool_def_path)
+                    
+                    # registry.register_tool() 内部已根据 registry.verbose 属性进行打印控制
                     registry.register_tool(tool_def)
                     
                     # 启动工具服务器
@@ -103,10 +102,12 @@ class RunCommand:
                         "server_type": server_type,
                         "parameters": tool_config.get("parameters", {})
                     }
-                    server_manager.start_server(server_type, server_config)
                     
-                    if verbose:
-                        print(f"✅ 注册工具: {tool_name} ({server_type})")
+                    # 关键修改：将 verbose 参数传递给 start_server
+                    server_manager.start_server(server_type, server_config, verbose=verbose)
+                    
+                    # 仅在 verbose=True 且 ToolRegistry 内部没有打印的情况下，可在此处打印
+                    # 但由于 ToolRegistry.register_tool 内部已处理，此处不再重复打印，避免混乱
                     
                 except Exception as e:
                     print(f"❌ 注册工具失败 {tool_name}: {e}")
@@ -115,7 +116,7 @@ class RunCommand:
                     print(f"⚠️  工具定义文件不存在: {tool_def_path}")
     
     def _display_execution_summary(self, results: Dict, verbose: bool):
-        """显示执行摘要"""
+        """显示执行摘要 (关键修改：删除简洁模式下的总结输出)"""
         total_steps = len(results)
         successful_steps = sum(1 for r in results.values() if r.get("success"))
         failed_steps = total_steps - successful_steps
@@ -126,11 +127,8 @@ class RunCommand:
             print(f"   成功: {successful_steps}")
             print(f"   失败: {failed_steps}")
         else:
-            # 简洁模式
-            if failed_steps == 0:
-                print(f"✅ 完成 ({successful_steps}/{total_steps} 步骤)")
-            else:
-                print(f"❌ 完成 ({successful_steps}/{total_steps} 步骤, {failed_steps} 失败)")
+            # 简洁模式下，删除所有总结输出，让 WorkflowExecutor.py 中的 goodbye_message 处理
+            pass
         
         if failed_steps > 0:
             print(f"\n❌ 失败的步骤:")

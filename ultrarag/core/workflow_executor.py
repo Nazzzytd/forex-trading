@@ -1,7 +1,8 @@
 import time
 import re
 from typing import Dict, Any, List, Union, Optional
-from .server_manager import ServerManager # 假设此模块不会打印
+from .server_manager import ServerManager 
+import pandas as pd # 导入 pandas 用于处理时间戳
 
 # SimpleMustache 保持最简状态
 class SimpleMustache:
@@ -16,7 +17,6 @@ class SimpleMustache:
         template = SimpleMustache._render_condition_blocks(template, context)
         return template
     
-    # ... 其他 SimpleMustache 静态方法保持不变 ...
     @staticmethod
     def _render_condition_blocks(template: str, context: Dict) -> str:
         pattern = r'{{#(.*?)}}(.*?){{/\1}}'
@@ -47,6 +47,7 @@ class SimpleMustache:
             value = SimpleMustache._get_value(var_key, context)
             
             if value is not None:
+                # 核心修正：如果变量是字典，返回其字符串表示，但更好的格式化应该在外部处理
                 return str(value)
             else:
                 return match.group(0)
@@ -96,7 +97,8 @@ class WorkflowExecutor:
         self.results = {}
         self.tool_mapping = {}
         self.stored_data = {}
-        self.verbose = False
+        # 假设 ServerManager 已处理 verbose，Executor 保持精简输出
+        self.verbose = False 
         self.branch_states = {}
         self.loop_counters = {}
     
@@ -106,7 +108,7 @@ class WorkflowExecutor:
         interactive_mode = workflow_config.get('_interactive_mode', False)
         provided_params = workflow_config.get('_provided_params', {})
         
-        # 移除外部框架的冗余输出，只保留工作流名称
+        # 打印工作流名称 (保持不变)
         print(f"📋 {workflow_name}")
         
         self.stored_data = workflow_config.get("variables", {}).copy()
@@ -121,9 +123,6 @@ class WorkflowExecutor:
         # 执行工作流步骤
         steps = workflow_config.get("workflow", [])
         result = self._execute_steps(steps, interactive_mode, provided_params)
-        
-        # 移除工作流执行完成的提示
-        # if self.verbose: print(f"✅ 工作流执行完成") 
         
         return self.results
 
@@ -147,12 +146,11 @@ class WorkflowExecutor:
         step_name = step.get("step", "未知步骤")
         step_type = step.get("type", "tool")
         
-        # 仅输出步骤名称，不换行，末尾留一个空格
+        # 仅输出步骤名称，不换行，末尾留一个空格 (保持不变)
         print(f"🔹 {step_name}", end=" ")
         
         try:
             if step_type == "print":
-                # 打印步骤的输出会换行，所以此处不需再打印
                 return self._execute_print_step(step, context)
             elif step_type == "tool":
                 return self._execute_tool_step(step, context)
@@ -177,6 +175,84 @@ class WorkflowExecutor:
             print(f"❌ {error_msg}")
             return None
 
+    # =======================================================
+    # ========== 核心格式化方法 - 解决报告输出混乱问题 ==========
+    # =======================================================
+
+    def _format_analysis_result(self, data: Dict[str, Any], level=0) -> List[str]:
+        """递归格式化嵌套的字典/列表为清晰的文本行"""
+        output = []
+        indent = "  " * level
+        
+        # 优先处理 AI 深度分析，如果是纯文本/Markdown，直接返回
+        if level == 0 and 'analysis' in data and isinstance(data['analysis'], str):
+            return [data['analysis'].strip()]
+
+        for key, value in data.items():
+            if key in ('success', 'timestamp', 'analysis_type', 'data_type', 'result'): # 忽略内部元数据
+                continue
+            
+            # 处理字典
+            if isinstance(value, dict):
+                output.append(f"{indent}🔹 **{key.replace('_', ' ').title()}**:")
+                output.extend(self._format_analysis_result(value, level + 1))
+            
+            # 处理列表
+            elif isinstance(value, list):
+                output.append(f"{indent}🔹 **{key.replace('_', ' ').title()}**: (共{len(value)}项)")
+                for item in value:
+                    if isinstance(item, dict):
+                        output.append(f"{indent}  -")
+                        output.extend(self._format_analysis_result(item, level + 2))
+                    else:
+                        output.append(f"{indent}  - {item}")
+            
+            # 处理基本类型
+            else:
+                # 格式化数值，保留四位小数，并添加千位分隔符
+                if isinstance(value, (int, float)):
+                    formatted_value = f"{value:,.4f}" if value != int(value) else f"{int(value):,}"
+                    output.append(f"{indent}• {key.replace('_', ' ').title()}: {formatted_value}")
+                else:
+                    output.append(f"{indent}• {key.replace('_', ' ').title()}: {value}")
+                    
+        return output
+
+    def _format_tool_results_in_message(self, message: str, context: Dict) -> str:
+        """在打印消息中，找到模板变量并将其原始字典值替换为格式化后的文本"""
+        
+        pattern = r'{{(.*?)}}'
+        
+        def replace_and_format(match):
+            var_key = match.group(1).strip()
+            
+            # 获取变量的原始值
+            value = SimpleMustache._get_value(var_key, context)
+            
+            # 如果原始值是字典，并且不是空字典，则进行格式化
+            if isinstance(value, dict) and value:
+                # 使用变量名作为标题（去除可能的 $ 前缀）
+                title = var_key.split('.')[-1].replace('_', ' ').title()
+                
+                # 针对 AI 分析，将标题替换为更具描述性的内容
+                if 'analysis' in value and isinstance(value['analysis'], str):
+                    title = "AI 深度分析"
+                    
+                # 格式化并返回文本
+                formatted_lines = self._format_analysis_result(value)
+                
+                # 构建最终的输出块 (使用 Markdown 格式)
+                header = f"\n\n## {title}"
+                separator = "─" * len(title)
+                
+                return f"{header}\n{separator}\n" + "\n".join(formatted_lines)
+            
+            # 否则，使用 SimpleMustache 的默认渲染逻辑
+            return SimpleMustache.render(match.group(0), context)
+
+        return re.sub(pattern, replace_and_format, message, flags=re.DOTALL)
+
+
     # ========== 打印步骤 ==========
     def _execute_print_step(self, step: Dict[str, Any], context: Dict = None) -> Any:
         """执行打印步骤 - 最终输出"""
@@ -184,9 +260,14 @@ class WorkflowExecutor:
             config = step.get("config", {})
             message = config.get("message", "")
             full_context = self._build_full_context(context)
-            resolved_message = SimpleMustache.render(message, full_context)
             
-            # 打印消息，这里会换行，步骤名称的 "🔹 step_name " 会被后续的打印结果覆盖
+            # *** 关键修改：先格式化消息中的字典变量 ***
+            resolved_message = self._format_tool_results_in_message(message, full_context)
+            
+            # 之后再进行一次简单的 Mustache 渲染，处理剩下的简单变量
+            resolved_message = SimpleMustache.render(resolved_message, full_context)
+            
+            # 打印消息
             print(f"\r{resolved_message}") 
             
             result = {"success": True, "result": resolved_message}
@@ -275,13 +356,9 @@ class WorkflowExecutor:
             full_context = self._build_full_context(context)
             resolved_inputs = self._resolve_inputs_with_mustache(inputs, full_context)
             
-            # 在调用工具之前，先打印一个空的回车，用于覆盖步骤名称
-            # 这一步是为了防止工具内部打印的调试信息污染步骤名称行
-            print(f"\r{step_name}...", end="") 
+            # 在调用工具之前，先打印一个空的回车，用于覆盖步骤名称 (保持不变)
+            print(f"\r🔹 {step_name}...", end="") 
             
-            # *** WARNING: 此处调用的 result.get("success", False) 之前的输出
-            # *** 都是由外部工具模块（technical_analyzer/data_fetcher）打印的，
-            # *** 无法在 WorkflowExecutor 级别删除。
             result = self.server_manager.call_tool_method(server_type, method, **resolved_inputs)
             
             self.results[step_name] = {"success": True, "result": result}
@@ -293,7 +370,7 @@ class WorkflowExecutor:
             
             if result.get("success", False):
                 # 打印成功提示，并换行
-                print(f"✅ ({tool_name}: {method})", end="")
+                print(f"\r✅ {step_name} ({tool_name}: {method})", end="")
                 if store_var:
                     print(f" (已保存到: {store_var})")
                 else:
@@ -322,8 +399,7 @@ class WorkflowExecutor:
             if not result or not result.get("success", False):
                 print("") # 确保失败时也换行
 
-    # --- 其他方法保持不变或仅做轻微调整 ---
-
+    # --- 其他辅助方法 ---
     def _start_tool_server(self, tool_config: Dict[str, Any]):
         """启动工具服务器 - 仅调用，不打印任何信息"""
         tool_name = tool_config["name"]
@@ -334,6 +410,8 @@ class WorkflowExecutor:
             "server_type": server_type,
             "parameters": tool_config.get("parameters", {})
         }
+        # 注意：此处 start_server 应该接收 self.verbose，
+        # 但我们假设 ServerManager 已经在其 __init__ 中处理了 verbose 设置。
         self.server_manager.start_server(server_type, server_config)
 
     def _execute_set_variable_step(self, step: Dict[str, Any], context: Dict = None) -> Any:
@@ -379,9 +457,9 @@ class WorkflowExecutor:
             # 默认不打印，保持简洁
             pass
 
-    # ... 其他辅助方法保持不变 ...
+    # ... (其他辅助方法和执行逻辑保持不变)
+    
     def _resolve_inputs_with_mustache(self, inputs: Dict[str, Any], context: Dict) -> Dict[str, Any]:
-        # ... (保持不变) ...
         resolved = {}
         for key, value in inputs.items():
             if isinstance(value, str) and ("{{" in value or "}}" in value):
@@ -401,7 +479,6 @@ class WorkflowExecutor:
         return resolved
 
     def _build_full_context(self, context: Dict = None) -> Dict[str, Any]:
-        # ... (保持不变) ...
         full_context = {}
         full_context.update(self.stored_data)
         for key, value in self.results.items():
@@ -414,34 +491,32 @@ class WorkflowExecutor:
         full_context.update({'stored_data': self.stored_data, 'results': self.results})
         return full_context
 
-    # ... 其他执行/验证/工具方法保持不变 ...
     def _execute_loop_step(self, step: Dict[str, Any], interactive_mode: bool = False,
                          provided_params: Dict = None, context: Dict = None) -> Any:
         step_name = step.get("step", "loop_step")
         config = step.get("config", {})
         times = config.get("times", 1)
         loop_steps = config.get("steps", [])
-        print(f"🔄 循环 {times} 次...")
+        print(f"\r🔄 {step_name} 循环 {times} 次...", end="")
         final_result = None
         for i in range(times):
             result = self._execute_steps(loop_steps, interactive_mode, provided_params, context)
             if result is not None:
                 final_result = result
-        print("✅ 循环结束")
+        print(f"\r✅ {step_name} 循环结束")
         return final_result
 
     def _execute_branch_step(self, step: Dict[str, Any], interactive_mode: bool = False,
                            provided_params: Dict = None, context: Dict = None) -> Any:
-        print("🚦 分支步骤 (未执行)")
+        print("\r🚦 分支步骤 (未执行)")
         return None
 
     def _execute_router_step(self, step: Dict[str, Any], interactive_mode: bool = False,
                            provided_params: Dict = None, context: Dict = None) -> Any:
-        print("🎯 路由器步骤 (未执行)")
+        print("\r🎯 路由器步骤 (未执行)")
         return None
 
     def _validate_input(self, value: str, config: Dict) -> tuple[bool, Any, str]:
-        # ... (保持不变) ...
         input_type = config.get("type", "string")
         required = config.get("required", False)
         
